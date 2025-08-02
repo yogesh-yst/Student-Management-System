@@ -1,15 +1,38 @@
-from flask import Flask, request, jsonify
+# from datetime import datetime, date
+# from pymongo import MongoClient
+# from pymongo.errors import DuplicateKeyError
+# #from bson import ObjectId
+# from flask_cors import CORS
+# import pandas as pd
+# from flask import Flask, request, jsonify, session
+# from werkzeug.security import generate_password_hash, check_password_hash
+# from functools import wraps
+
 from datetime import datetime, date
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
-#from bson import ObjectId
 from flask_cors import CORS
 import pandas as pd
+from flask import Flask, request, jsonify, session
+from werkzeug.security import generate_password_hash, check_password_hash
+from functools import wraps
+from flask_session import Session
 
 app = Flask(__name__)
 
+# Session Configuration
+app.config['SECRET_KEY'] = 'pnSCE8RtcPqPetdV'  # Change this to a secure random key
+app.config['SESSION_TYPE'] = 'filesystem'
+Session(app)
+
 # Allow CORS for requests from the frontend
-CORS(app, origins=["http://localhost:5173"])
+CORS(app, 
+     origins=["http://localhost:5173"],
+     supports_credentials=True,
+     methods=["GET", "POST", "OPTIONS"],  
+     expose_headers=["Content-Type", "X-CSRFToken"],
+     allow_headers=["Content-Type", "X-CSRFToken"])
+
 
 
 # MongoDB Configuration
@@ -20,6 +43,7 @@ client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 attendance_collection = db["attendance"]
 member_collection = db["member"]
+user_collection = db["users"]  # Added user_collection
 
 class DuplicateAttendanceError(Exception):
     """Custom exception for duplicate attendance entries."""
@@ -85,7 +109,48 @@ def lookup_student(student_id):
     student = member_collection.find_one({"student_id": student_id}, {"name": 1, "_id": 0})
     return student
 
+# Create an admin user if not exists
+def create_default_admin():
+    admin_user = user_collection.find_one({"username": "admin"})
+    if not admin_user:
+        user_collection.insert_one({
+            "username": "admin",
+            "password": generate_password_hash("admin123"),
+            "role": "admin"
+        })
+
+# Authentication decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Login API
+@app.route('/api/login', methods=['POST'] )
+def login():
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+    
+    user = user_collection.find_one({"username": username})
+    
+    if user and check_password_hash(user['password'], password):
+        session['user'] = username
+        return jsonify({"message": "Login successful"})
+    
+    return jsonify({"error": "Invalid credentials"}), 401
+
+# Logout API
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.pop('user', None)
+    return jsonify({"message": "Logout successful"})
+
 @app.route('/api/checkin', methods=['POST'])
+@login_required
 def check_in():
     data = request.get_json()
     student_id = data.get('studentId')
@@ -132,6 +197,7 @@ def health_check():
 
 
 @app.route('/api/attendance/today', methods=['GET'])
+@login_required
 def get_today_attendance_api():
     try:
         attendance_records = get_today_attendance()
@@ -140,4 +206,5 @@ def get_today_attendance_api():
         return jsonify({'error': 'Failed to retrieve attendance: ' + str(e)}), 500
 
 if __name__ == '__main__':
+    create_default_admin()
     app.run(debug=True)
