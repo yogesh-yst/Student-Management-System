@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
-//import Button from "@/components/ui/button";
-//import { AlertCircle } from "lucide-react";
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './components/Login';
+import Navigation from './components/navigation';
+import Home from './components/Home';
+import Members from './components/Members';
+import Reports from './components/Reports';
 
 const API_BASE_URL = 'http://localhost:5000/api'; // Adjust if your backend runs on a different port
 
@@ -126,15 +130,51 @@ const styles = {
   },
   alertDescription: {
     fontSize: '0.875rem'
-  }
+  },
+   headerContent: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+    },
+    logoutButton: {
+        padding: '0.5rem 1rem',
+        backgroundColor: '#EF4444',
+        color: 'white',
+        border: 'none',
+        borderRadius: '0.375rem',
+        cursor: 'pointer',
+        fontSize: '0.875rem',
+    },
+    mainContent: {
+        marginTop: '80px', // Add space for fixed navigation
+        width: '100%',
+    },
 };
 
 function App() {
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [studentId, setStudentId] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const [attendanceList, setAttendanceList] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+
+    const handleLogin = () => {
+        setIsAuthenticated(true);
+    };
+
+    const handleLogout = async () => {
+        try {
+            await fetch(`${API_BASE_URL}/logout`, {
+                method: 'POST',
+                credentials: 'include'
+            });
+            setIsAuthenticated(false);
+        } catch (error) {
+            console.error('Logout failed:', error);
+        }
+    };
 
     const handleCheckIn = async () => {
         if (!studentId.trim()) {
@@ -150,6 +190,7 @@ function App() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
+                credentials: 'include', 
                 body: JSON.stringify({ studentId }),
             });
 
@@ -181,7 +222,13 @@ function App() {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/attendance/today`);
+            const response = await fetch(`${API_BASE_URL}/attendance/today`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include', // Include cookies/session
+            });
             if (!response.ok) {
                 throw new Error(`Failed to fetch attendance: ${response.status}`);
             }
@@ -225,100 +272,41 @@ function App() {
         record.name && record.name.toLowerCase().startsWith(searchTerm.trim().toLowerCase())
     );
 
-    return (
-        <div style={styles.container}>
-            <div style={styles.contentWrapper}>
-                <div style={styles.header}>
-                    <h1 style={styles.title}>CMC Bala Vihar Attendance</h1>
-                    <p style={styles.subtitle}>Scan QR Code / Enter Student ID</p>
-                </div>
-                
-                <div style={styles.formSection}>
-                    <input
-                        id="studentId"
-                        type="text"
-                        value={studentId}
-                        onChange={(e) => setStudentId(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                                handleCheckIn();
-                            }
-                        }}
-                        placeholder="Enter Student ID"
-                        style={styles.input}
-                        disabled={loading}
-                    />
-                    
-                    <button
-                        onClick={handleCheckIn}
-                        disabled={loading}
-                        style={{
-                            ...styles.button,
-                            ...(loading ? styles.buttonDisabled : {})
-                        }}
-                    >
-                        {loading ? 'Checking In...' : 'Check In'}
-                    </button>
-                    
-                    {statusMessage && (
-                        <div style={{...styles.alert, ...getAlertStyle()}}>
-                            <div style={styles.alertTitle}>{getAlertTitle()}</div>
-                            <div style={styles.alertDescription}>
-                                {statusMessage.replace(/^[\u2705\u274C\u26A0\s]+/, '')}
-                            </div>
-                        </div>
-                    )}
-                    
-                    <p style={styles.smallText}>
-                        *Enter Student ID and press Check In or hit Enter to log attendance
-                    </p>
-                </div>
+    if (!isAuthenticated) {
+        return <Login onLogin={handleLogin} />;
+    }
 
-                <div>
-                    <h2 style={styles.sectionTitle}>Today's Attendance</h2>
-                    {/* Search box for filtering by first name */}
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        placeholder="Search by first name"
-                        style={{ ...styles.input, marginBottom: '1.5rem' }}
-                        disabled={loading}
+    return (
+        <Router>
+            <Navigation onLogout={handleLogout} />
+            <div style={styles.container}>
+                <Routes>
+                    <Route 
+                        path="/" 
+                        element={
+                            <Home 
+                                studentId={studentId}
+                                setStudentId={setStudentId}
+                                handleCheckIn={handleCheckIn}
+                                loading={loading}
+                                statusMessage={statusMessage}
+                                getAlertStyle={getAlertStyle}
+                                getAlertTitle={getAlertTitle}
+                                searchTerm={searchTerm}
+                                setSearchTerm={setSearchTerm}
+                                error={error}
+                                filteredAttendance={filteredAttendance}
+                                styles={styles}
+                            />
+                        } 
                     />
-                    {loading ? (
-                        <p>Loading attendance data...</p>
-                    ) : error ? (
-                        <div style={{...styles.alert, ...styles.alertError}}>
-                            <div style={styles.alertTitle}>Error</div>
-                            <div style={styles.alertDescription}>{error}</div>
-                        </div>
-                    ) : filteredAttendance.length > 0 ? (
-                        <div style={styles.tableContainer}>
-                            <table style={styles.table}>
-                                <thead style={styles.tableHeader}>
-                                    <tr>
-                                        <th style={styles.tableHeaderCell}>Student ID</th>
-                                        <th style={styles.tableHeaderCell}>Name</th>
-                                        <th style={styles.tableHeaderCell}>Check in Time</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredAttendance.map((record) => (
-                                        <tr key={record.student_id}>
-                                            <td style={styles.tableCell}>{record.student_id}</td>
-                                            <td style={styles.tableCell}>{record.name}</td>
-                                            <td style={styles.tableCell}>{record.timestamp}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    ) : (
-                        <p>No attendance records for today yet.</p>
-                    )}
-                </div>
+                    <Route path="/members" element={<Members />} />
+                    <Route path="/reports" element={<Reports />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
             </div>
-        </div>
+        </Router>
     );
 }
+
 export default App;
