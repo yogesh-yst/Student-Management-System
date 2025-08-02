@@ -10,7 +10,7 @@ env/
 
 # Flask instance folder
 instance/
-
+flask_session/
 
 # Flask cache files
 *.log
