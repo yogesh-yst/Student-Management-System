@@ -15,6 +15,7 @@ instance/
 # Flask cache files
 *.log
 *.sqlite3
+flask_session
 
 # IDE-specific files
 .vscode/
