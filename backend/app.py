@@ -29,7 +29,7 @@ Session(app)
 CORS(app, 
      origins=["http://localhost:5173"],
      supports_credentials=True,
-     methods=["GET", "POST", "OPTIONS"],  
+     methods=["GET", "POST", "OPTIONS","PATCH", "PUT", "DELETE "],  
      expose_headers=["Content-Type", "X-CSRFToken"],
      allow_headers=["Content-Type", "X-CSRFToken"])
 
@@ -204,6 +204,45 @@ def get_today_attendance_api():
         return jsonify(attendance_records), 200
     except Exception as e:
         return jsonify({'error': 'Failed to retrieve attendance: ' + str(e)}), 500
+
+@app.route('/api/members', methods=['GET'])
+@login_required
+def get_members():
+    try:
+        members = list(member_collection.find({}, {'_id': 0}))
+        return jsonify(members)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/members/<student_id>', methods=['PUT'])
+@login_required
+def update_member(student_id):
+    try:
+        data = request.get_json()
+        
+        # Remove any attempts to modify the student_id
+        if 'student_id' in data:
+            del data['student_id']
+            
+        # Update the member
+        result = member_collection.update_one(
+            {"student_id": student_id},
+            {"$set": data}
+        )
+        
+        if result.modified_count == 0:
+            return jsonify({"error": "Member not found"}), 404
+            
+        # Fetch and return the updated member
+        updated_member = member_collection.find_one(
+            {"student_id": student_id},
+            {"_id": 0}
+        )
+        
+        return jsonify(updated_member)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     create_default_admin()
