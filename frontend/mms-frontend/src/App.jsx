@@ -272,6 +272,10 @@ function App() {
         record.name && record.name.toLowerCase().startsWith(searchTerm.trim().toLowerCase())
     );
 
+    const handleRefreshAttendance = () => {
+        fetchTodayAttendance(); // Your existing fetch function
+    };
+
     if (!isAuthenticated) {
         return <Login onLogin={handleLogin} />;
     }
@@ -297,6 +301,7 @@ function App() {
                                 error={error}
                                 filteredAttendance={filteredAttendance}
                                 styles={styles}
+                                onRefreshAttendance={handleRefreshAttendance}
                             />
                         } 
                     />

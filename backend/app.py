@@ -7,7 +7,7 @@
 # from flask import Flask, request, jsonify, session
 # from werkzeug.security import generate_password_hash, check_password_hash
 # from functools import wraps
-
+from reports_backend import ReportsManager
 from datetime import datetime, date
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
@@ -43,7 +43,44 @@ client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 attendance_collection = db["attendance"]
 member_collection = db["member"]
-user_collection = db["users"]  # Added user_collection
+user_collection = db["users"]  
+reports_manager = ReportsManager(db)
+
+# Authentication decorator
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user' not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Add new API endpoints for reports
+@app.route('/api/reports/attendance', methods=['GET'])
+@login_required
+def attendance_report():
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if start_date:
+            start_date = datetime.strptime(start_date, '%Y-%m-%d')
+        if end_date:
+            end_date = datetime.strptime(end_date, '%Y-%m-%d')
+            
+        report_data = get_attendance_report(db, start_date, end_date)
+        return jsonify(report_data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reports/member/<student_id>', methods=['GET'])
+@login_required
+def member_attendance_summary(student_id):
+    try:
+        summary = get_member_attendance_summary(db, student_id)
+        return jsonify(summary)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 class DuplicateAttendanceError(Exception):
     """Custom exception for duplicate attendance entries."""
@@ -213,6 +250,53 @@ def get_members():
         return jsonify(members)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/api/members', methods=['POST'])
+@login_required
+def add_member():
+    try:
+        data = request.get_json()
+        
+        # Validate required fields
+        required_fields = ['student_id', 'name', 'grade', 'status']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({"error": f"{field} is required"}), 400
+        
+        # Check if student_id already exists
+        existing_member = member_collection.find_one({"student_id": data['student_id']})
+        if existing_member:
+            return jsonify({"error": "Student ID already exists"}), 409
+        
+        # Prepare member data with default values
+        member_data = {
+            "student_id": data['student_id'],
+            "name": data['name'],
+            "grade": data['grade'],
+            "status": data.get('status', 'Active'),
+            "parent_name": data.get('parent_name', ''),
+            "contact": data.get('contact', ''),
+            "email": data.get('email', ''),
+            "created_at": datetime.now(),
+            "updated_at": datetime.now()
+        }
+        
+        # Insert the new member
+        result = member_collection.insert_one(member_data)
+        
+        if result.inserted_id:
+            # Fetch and return the created member (excluding MongoDB _id)
+            new_member = member_collection.find_one(
+                {"student_id": data['student_id']},
+                {"_id": 0}
+            )
+            return jsonify(new_member), 201
+        else:
+            return jsonify({"error": "Failed to create member"}), 500
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/members/<student_id>', methods=['PUT'])
 @login_required
@@ -223,6 +307,9 @@ def update_member(student_id):
         # Remove any attempts to modify the student_id
         if 'student_id' in data:
             del data['student_id']
+        
+        # Add updated timestamp
+        data['updated_at'] = datetime.now()
             
         # Update the member
         result = member_collection.update_one(
@@ -244,6 +331,37 @@ def update_member(student_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/reports', methods=['GET'])
+@login_required
+def get_reports():
+    try:
+        category = request.args.get('category')
+        active_only = request.args.get('active_only', 'true').lower() == 'true'
+        reports = reports_manager.get_reports(category, active_only)
+        return jsonify(reports), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reports/<report_id>', methods=['GET'])
+@login_required
+def get_report_details(report_id):
+    """Get detailed information about a specific report"""
+    try:
+        #report = reports_collection.find_one(
+        report = reports_manager.reports_collection.find_one(
+            {"report_id": report_id}, 
+            {"_id": 0}
+        )
+        
+        if not report:
+            return jsonify({"error": "Report not found"}), 404
+            
+        return jsonify(report), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    
 if __name__ == '__main__':
     create_default_admin()
+    reports_manager.initialize_default_reports()  
     app.run(debug=True)
