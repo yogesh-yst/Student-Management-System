@@ -1,14 +1,20 @@
-# from datetime import datetime, date
-# from pymongo import MongoClient
-# from pymongo.errors import DuplicateKeyError
-# #from bson import ObjectId
-# from flask_cors import CORS
-# import pandas as pd
-# from flask import Flask, request, jsonify, session
-# from werkzeug.security import generate_password_hash, check_password_hash
-# from functools import wraps
+import io
+import os
+import uuid
+from datetime import datetime, timedelta
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+import pandas as pd
+from reports_generator import create_pdf_report, create_excel_report, ReportGenerator
+from flask import send_file
+import tempfile
 from reports_backend import ReportsManager
 from datetime import datetime, date
+
+
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
 from flask_cors import CORS
@@ -44,7 +50,9 @@ db = client[DB_NAME]
 attendance_collection = db["attendance"]
 member_collection = db["member"]
 user_collection = db["users"]  
+generated_reports_collection = db["generated_reports"]
 reports_manager = ReportsManager(db)
+report_generator = ReportGenerator(db)
 
 # Authentication decorator
 def login_required(f):
@@ -361,6 +369,166 @@ def get_report_details(report_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
     
+
+@app.route('/api/reports/<report_id>/generate', methods=['POST'])
+@login_required
+def generate_report(report_id):
+    """Generate a report with given parameters"""
+    try:
+        # Get report details
+        report = reports_manager.reports_collection.find_one({"report_id": report_id})
+        if not report:
+            return jsonify({"error": "Report not found"}), 404
+            
+        if not report.get('is_active', False):
+            return jsonify({"error": "Report is not active"}), 400
+            
+        # Get parameters from request
+        data = request.get_json()
+        parameters = data.get('parameters', {})
+        output_format = data.get('output_format', 'PDF')
+        
+        # Validate required parameters
+        for param in report.get('parameters', []):
+            if param.get('required', False) and not parameters.get(param['name']):
+                return jsonify({
+                    "error": f"Required parameter '{param['label']}' is missing"
+                }), 400
+        
+        # Generate report data based on report type
+        report_data = None
+        if report_id == 'attendance_summary':
+            report_data = report_generator.generate_attendance_summary(parameters)
+        elif report_id == 'student_roster':
+            report_data = report_generator.generate_student_roster(parameters)
+        elif report_id == 'daily_attendance':
+            report_data = report_generator.generate_daily_attendance(parameters)
+        else:
+            return jsonify({"error": "Report generation not implemented for this report type"}), 400
+        
+        # Generate file
+        file_buffer = None
+        file_extension = None
+        content_type = None
+        
+        if output_format == 'PDF':
+            file_buffer = create_pdf_report(report_data)
+            file_extension = 'pdf'
+            content_type = 'application/pdf'
+        elif output_format == 'Excel':
+            file_buffer = create_excel_report(report_data)
+            file_extension = 'xlsx'
+            content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        else:
+            return jsonify({"error": "Unsupported output format"}), 400
+        
+        # Save file information to database
+        file_id = str(uuid.uuid4())
+        filename = f"{report_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file_extension}"
+        
+        # Save file to temporary directory (in production, use cloud storage)
+        temp_dir = tempfile.gettempdir()
+        file_path = os.path.join(temp_dir, filename)
+        
+        with open(file_path, 'wb') as f:
+            f.write(file_buffer.getvalue())
+        
+        # Store metadata in database
+        report_metadata = {
+            "file_id": file_id,
+            "report_id": report_id,
+            "filename": filename,
+            "file_path": file_path,
+            "parameters": parameters,
+            "output_format": output_format,
+            "generated_at": datetime.now(),
+            "generated_by": session.get('user', 'unknown'),
+            "expires_at": datetime.now() + timedelta(days=7),  # Files expire after 7 days
+            "file_size": os.path.getsize(file_path),
+            "download_count": 0
+        }
+        
+        generated_reports_collection.insert_one(report_metadata)
+        
+        response = {
+            "status": "success",
+            "message": f"Report '{report['title']}' generated successfully",
+            "file_id": file_id,
+            "filename": filename,
+            "download_url": f"/api/reports/download/{file_id}",
+            "generated_at": datetime.now().isoformat(),
+            "expires_at": report_metadata['expires_at'].isoformat(),
+            "file_size": report_metadata['file_size']
+        }
+        
+        return jsonify(response), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/download/<file_id>', methods=['GET'])
+@login_required
+def download_report(file_id):
+    """Download a generated report file"""
+    try:
+        # Find the file metadata
+        file_metadata = generated_reports_collection.find_one({"file_id": file_id})
+        
+        if not file_metadata:
+            return jsonify({"error": "File not found"}), 404
+        
+        # Check if file has expired
+        if datetime.now() > file_metadata['expires_at']:
+            return jsonify({"error": "File has expired"}), 410
+        
+        # Check if file exists
+        if not os.path.exists(file_metadata['file_path']):
+            return jsonify({"error": "File no longer available"}), 404
+        
+        # Update download count
+        generated_reports_collection.update_one(
+            {"file_id": file_id},
+            {"$inc": {"download_count": 1}}
+        )
+        
+        # Determine content type
+        content_type = 'application/pdf' if file_metadata['filename'].endswith('.pdf') else \
+                      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        
+        return send_file(
+            file_metadata['file_path'],
+            mimetype=content_type,
+            as_attachment=True,
+            download_name=file_metadata['filename']
+        )
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/reports/generated', methods=['GET'])
+@login_required
+def get_generated_reports():
+    """Get list of generated reports for the current user"""
+    try:
+        user = session.get('user', 'unknown')
+        
+        # Get reports generated by current user that haven't expired
+        generated_reports = list(generated_reports_collection.find(
+            {
+                "generated_by": user,
+                "expires_at": {"$gte": datetime.now()}
+            },
+            {"_id": 0}
+        ).sort("generated_at", -1))
+        
+        return jsonify(generated_reports), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+
+
 if __name__ == '__main__':
     create_default_admin()
     reports_manager.initialize_default_reports()  

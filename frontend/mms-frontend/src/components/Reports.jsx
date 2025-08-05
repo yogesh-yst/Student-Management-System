@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import ParameterForm from './ParameterForm';
+import DownloadManager from './DownloadManager';
 
 const Reports = () => {
     const [reports, setReports] = useState([]);
@@ -8,6 +10,10 @@ const Reports = () => {
     const [error, setError] = useState(null);
     const [selectedReport, setSelectedReport] = useState(null);
     const [showReportModal, setShowReportModal] = useState(false);
+    const [showParameterForm, setShowParameterForm] = useState(false);
+    const [showDownloadManager, setShowDownloadManager] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationMessage, setGenerationMessage] = useState('');
 
     const styles = {
         container: {
@@ -42,6 +48,19 @@ const Reports = () => {
             display: 'flex',
             alignItems: 'center',
             gap: '1rem',
+        },
+        downloadManagerButton: {
+            padding: '0.5rem 1rem',
+            backgroundColor: '#059669',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            fontSize: '0.875rem',
+            cursor: 'pointer',
+            fontWeight: '500',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
         },
         filterLabel: {
             fontSize: '0.875rem',
@@ -209,6 +228,19 @@ const Reports = () => {
             cursor: 'pointer',
             color: '#6B7280',
         },
+        successMessage: {
+            position: 'fixed',
+            top: '20px',
+            right: '20px',
+            backgroundColor: '#059669',
+            color: 'white',
+            padding: '1rem 1.5rem',
+            borderRadius: '0.375rem',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+            zIndex: 1001,
+            fontSize: '0.875rem',
+            fontWeight: '500',
+        },
     };
 
     useEffect(() => {
@@ -268,9 +300,59 @@ const Reports = () => {
     };
 
     const handleGenerateReport = async (reportId) => {
-        // For now, just show an alert. In a real implementation, 
-        // this would open a parameter form or generate the report
-        alert(`Generating report: ${reportId}\n\nThis would typically open a parameter form or start the report generation process.`);
+        try {
+            const response = await fetch(`http://localhost:5000/api/reports/${reportId}`, {
+                credentials: 'include',
+            });
+            if (response.ok) {
+                const detailedReport = await response.json();
+                setSelectedReport(detailedReport);
+                setShowParameterForm(true);
+            }
+        } catch (err) {
+            console.error('Failed to fetch report details:', err);
+            alert('Failed to load report details. Please try again.');
+        }
+    };
+
+    const handleParameterSubmit = async (formData) => {
+        try {
+            setIsGenerating(true);
+            setGenerationMessage('Generating report...');
+            
+            const response = await fetch(`http://localhost:5000/api/reports/${selectedReport.report_id}/generate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify(formData),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to generate report');
+            }
+
+            const result = await response.json();
+            setGenerationMessage('Report generated successfully!');
+            
+            // Close parameter form and show success message
+            setShowParameterForm(false);
+            
+            // Show download manager after a brief delay
+            setTimeout(() => {
+                setShowDownloadManager(true);
+                setGenerationMessage('');
+            }, 1500);
+
+        } catch (err) {
+            console.error('Report generation failed:', err);
+            setGenerationMessage('');
+            alert(`Report generation failed: ${err.message}`);
+        } finally {
+            setIsGenerating(false);
+        }
     };
 
     const getCategoryColor = (category) => {
@@ -328,6 +410,12 @@ const Reports = () => {
                     </select>
                 </div>
                 <div style={styles.filterGroup}>
+                    <button
+                        style={styles.downloadManagerButton}
+                        onClick={() => setShowDownloadManager(true)}
+                    >
+                        📁 My Downloads
+                    </button>
                     <span style={styles.filterLabel}>
                         Showing {filteredReports.length} of {reports.length} reports
                     </span>
@@ -484,6 +572,29 @@ const Reports = () => {
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {/* Parameter Form Modal */}
+            {showParameterForm && selectedReport && (
+                <ParameterForm
+                    report={selectedReport}
+                    onSubmit={handleParameterSubmit}
+                    onCancel={() => setShowParameterForm(false)}
+                    isSubmitting={isGenerating}
+                />
+            )}
+
+            {/* Download Manager Modal */}
+            <DownloadManager
+                isOpen={showDownloadManager}
+                onClose={() => setShowDownloadManager(false)}
+            />
+
+            {/* Success Message */}
+            {generationMessage && (
+                <div style={styles.successMessage}>
+                    {generationMessage}
                 </div>
             )}
         </div>
