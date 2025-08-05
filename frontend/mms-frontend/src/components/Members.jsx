@@ -7,6 +7,7 @@ const Members = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [selectedMember, setSelectedMember] = useState(null);
+    const [isAddingNew, setIsAddingNew] = useState(false);
 
     const styles = {
         container: {
@@ -23,11 +24,30 @@ const Members = () => {
             height: '100%',
             minWidth: 0,
         },
+        header: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.5rem',
+        },
         title: {
             fontSize: '2rem',
             fontWeight: 'bold',
-            marginBottom: '2rem',
             color: '#111827',
+            margin: 0,
+        },
+        addButton: {
+            padding: '0.75rem 1.5rem',
+            backgroundColor: '#059669',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
         },
         searchContainer: {
             marginBottom: '1.5rem',
@@ -39,6 +59,28 @@ const Members = () => {
             border: '1px solid #D1D5DB',
             fontSize: '1rem',
             marginBottom: '1rem',
+        },
+        statsContainer: {
+            display: 'flex',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+        },
+        statCard: {
+            backgroundColor: '#F3F4F6',
+            padding: '1rem',
+            borderRadius: '0.375rem',
+            textAlign: 'center',
+            minWidth: '100px',
+        },
+        statNumber: {
+            fontSize: '1.5rem',
+            fontWeight: 'bold',
+            color: '#1F2937',
+        },
+        statLabel: {
+            fontSize: '0.75rem',
+            color: '#6B7280',
+            textTransform: 'uppercase',
         },
         tableContainer: {
             flex: 1,
@@ -91,6 +133,11 @@ const Members = () => {
             borderRadius: '0.375rem',
             marginBottom: '1rem',
         },
+        emptyState: {
+            textAlign: 'center',
+            padding: '2rem',
+            color: '#6B7280',
+        },
     };
 
     useEffect(() => {
@@ -116,7 +163,8 @@ const Members = () => {
 
     const filteredMembers = members.filter(member =>
         member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        member.student_id.toLowerCase().includes(searchTerm.toLowerCase())
+        member.student_id.toLowerCase().includes(searchTerm.toLowerCase()) 
+      //  member.grade.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const handleMemberUpdate = (updatedMember) => {
@@ -127,6 +175,31 @@ const Members = () => {
         );
         setSelectedMember(updatedMember);
     };
+
+    const handleMemberAdd = (newMember) => {
+        setMembers(prevMembers => [...prevMembers, newMember]);
+        setSelectedMember(newMember);
+    };
+
+    const handleAddNewMember = () => {
+        setSelectedMember(null);
+        setIsAddingNew(true);
+    };
+
+    const handleCancelAdd = () => {
+        setIsAddingNew(false);
+    };
+
+    const handleMemberSelect = (member) => {
+        if (isAddingNew) {
+            setIsAddingNew(false);
+        }
+        setSelectedMember(member);
+    };
+
+    // Calculate stats
+    const activeMembers = members.filter(m => m.status === 'Active').length;
+    const totalMembers = members.length;
 
     return (
         <div style={{ ...styles.container, flexDirection: 'column', gap: 0 }}>
@@ -139,26 +212,49 @@ const Members = () => {
                 marginBottom: '2rem',
                 boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
             }}>
-                <h1 style={{ ...styles.title, marginBottom: 0 }}>Members Directory</h1>
+                <div style={styles.header}>
+                    <h1 style={styles.title}>Members Directory</h1>
+                    <button onClick={handleAddNewMember} style={styles.addButton}>
+                        <span>+</span>
+                        Add New Member
+                    </button>
+                </div>
             </div>
+            
             {/* Main Content Panels */}
             <div style={{ display: 'flex', gap: '2rem', flex: 1, minHeight: 0 }}>
                 <div style={styles.mainPanel}>
                     <div style={styles.searchContainer}>
                         <input
                             type="text"
-                            placeholder="Search members..."
+                            placeholder="Search members by name, ID, or grade..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             style={styles.searchInput}
                         />
+                        
+                        {/* Stats */}
+                        <div style={styles.statsContainer}>
+                            <div style={styles.statCard}>
+                                <div style={styles.statNumber}>{totalMembers}</div>
+                                <div style={styles.statLabel}>Total Members</div>
+                            </div>
+                            <div style={styles.statCard}>
+                                <div style={styles.statNumber}>{activeMembers}</div>
+                                <div style={styles.statLabel}>Active Members</div>
+                            </div>
+                            <div style={styles.statCard}>
+                                <div style={styles.statNumber}>{filteredMembers.length}</div>
+                                <div style={styles.statLabel}>Filtered Results</div>
+                            </div>
+                        </div>
                     </div>
 
                     {loading ? (
                         <div style={styles.loadingText}>Loading members...</div>
                     ) : error ? (
                         <div style={styles.errorText}>{error}</div>
-                    ) : (
+                    ) : filteredMembers.length > 0 ? (
                         <div style={styles.tableContainer}>
                             <table style={styles.table}>
                                 <thead>
@@ -167,27 +263,47 @@ const Members = () => {
                                         <th style={styles.tableHeader}>Name</th>
                                         <th style={styles.tableHeader}>Grade</th>
                                         <th style={styles.tableHeader}>Status</th>
+                                        <th style={styles.tableHeader}>Contact</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {filteredMembers.map((member) => (
                                         <tr 
                                             key={member.student_id}
-                                            onClick={() => setSelectedMember(member)}
+                                            onClick={() => handleMemberSelect(member)}
                                             style={{
                                                 ...styles.tableCell,
                                                 ...styles.tableRow,
-                                                ...(selectedMember?.student_id === member.student_id ? styles.selectedRow : {})
+                                                ...(selectedMember?.student_id === member.student_id && !isAddingNew ? styles.selectedRow : {})
                                             }}
                                         >
                                             <td style={styles.tableCell}>{member.student_id}</td>
                                             <td style={styles.tableCell}>{member.name}</td>
                                             <td style={styles.tableCell}>{member.grade}</td>
-                                            <td style={styles.tableCell}>{member.status}</td>
+                                            <td style={styles.tableCell}>
+                                                <span style={{
+                                                    padding: '0.25rem 0.5rem',
+                                                    borderRadius: '0.25rem',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: '500',
+                                                    backgroundColor: member.status === 'Active' ? '#DCFCE7' : '#FEF3C7',
+                                                    color: member.status === 'Active' ? '#166534' : '#92400E'
+                                                }}>
+                                                    {member.status}
+                                                </span>
+                                            </td>
+                                            <td style={styles.tableCell}>{member.contact || 'N/A'}</td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
+                        </div>
+                    ) : (
+                        <div style={styles.emptyState}>
+                            {searchTerm ? 
+                                `No members found matching "${searchTerm}"` : 
+                                'No members found. Add your first member!'
+                            }
                         </div>
                     )}
                 </div>
@@ -195,6 +311,9 @@ const Members = () => {
                 <MemberDetails 
                     member={selectedMember} 
                     onMemberUpdate={handleMemberUpdate}
+                    onMemberAdd={handleMemberAdd}
+                    isAddingNew={isAddingNew}
+                    onCancelAdd={handleCancelAdd}
                 />
             </div>
         </div>

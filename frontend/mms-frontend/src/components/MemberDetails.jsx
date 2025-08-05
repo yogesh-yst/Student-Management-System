@@ -1,41 +1,123 @@
 import React, { useState } from 'react';
 
-const MemberDetails = ({ member, onMemberUpdate }) => {
+const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCancelAdd }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [editedMember, setEditedMember] = useState(null);
+    const [errors, setErrors] = useState({});
+    const [checkingIn, setCheckingIn] = useState(false);
+    const [checkInStatus, setCheckInStatus] = useState(null);
+
+    // Initialize new member template
+    const newMemberTemplate = {
+        student_id: '',
+        name: '',
+        grade: '',
+        status: 'Active',
+        parent_name: '',
+        contact: '',
+        email: ''
+    };
 
     const handleEdit = () => {
         setEditedMember({ ...member });
         setIsEditing(true);
+        setErrors({});
+    };
+
+    const handleAddNew = () => {
+        setEditedMember({ ...newMemberTemplate });
+        setErrors({});
+    };
+
+    const validateForm = (memberData) => {
+        const newErrors = {};
+        
+        if (!memberData.student_id?.trim()) {
+            newErrors.student_id = 'Student ID is required';
+        }
+        if (!memberData.name?.trim()) {
+            newErrors.name = 'Name is required';
+        }
+        if (!memberData.grade?.trim()) {
+            newErrors.grade = 'Grade is required';
+        }
+        if (!memberData.status?.trim()) {
+            newErrors.status = 'Status is required';
+        }
+        
+        // Email validation if provided
+        if (memberData.email && !/\S+@\S+\.\S+/.test(memberData.email)) {
+            newErrors.email = 'Please enter a valid email address';
+        }
+        
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
     };
 
     const handleSave = async () => {
-        try {
-            const response = await fetch(`http://localhost:5000/api/members/${editedMember.student_id}`, {
-                method: 'PUT',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                credentials: 'include',
-                body: JSON.stringify(editedMember),
-            });
+        if (!validateForm(editedMember)) {
+            return;
+        }
 
-            if (!response.ok) {
-                throw new Error('Failed to update member');
+        try {
+            let response;
+            if (isAddingNew) {
+                // Adding new member
+                response = await fetch('http://localhost:5000/api/members', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(editedMember),
+                });
+            } else {
+                // Updating existing member
+                response = await fetch(`http://localhost:5000/api/members/${editedMember.student_id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(editedMember),
+                });
             }
 
-            const updatedMember = await response.json();
-            onMemberUpdate(updatedMember);
-            setIsEditing(false);
+            if (!response.ok) {
+                const errorData = await response.json();
+                if (response.status === 409) {
+                    setErrors({ student_id: errorData.error });
+                    return;
+                }
+                throw new Error(errorData.error || 'Failed to save member');
+            }
+
+            const savedMember = await response.json();
+            
+            if (isAddingNew) {
+                onMemberAdd(savedMember);
+                onCancelAdd(); // Close add mode
+            } else {
+                onMemberUpdate(savedMember);
+                setIsEditing(false);
+            }
+            
+            setEditedMember(null);
+            setErrors({});
         } catch (error) {
-            console.error('Error updating member:', error);
-            // Add error handling UI if needed
+            console.error('Error saving member:', error);
+            setErrors({ general: error.message });
         }
     };
 
     const handleCancel = () => {
-        setIsEditing(false);
+        if (isAddingNew) {
+            onCancelAdd();
+        } else {
+            setIsEditing(false);
+        }
         setEditedMember(null);
+        setErrors({});
     };
 
     const handleChange = (field, value) => {
@@ -43,7 +125,62 @@ const MemberDetails = ({ member, onMemberUpdate }) => {
             ...prev,
             [field]: value
         }));
+        
+        // Clear error for this field when user starts typing
+        if (errors[field]) {
+            setErrors(prev => ({
+                ...prev,
+                [field]: ''
+            }));
+        }
     };
+
+    const handleCheckIn = async () => {
+        if (!member || checkingIn) return;
+        
+        setCheckingIn(true);
+        setCheckInStatus(null);
+
+        try {
+            const response = await fetch('http://localhost:5000/api/checkin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    studentId: member.student_id,
+                    name: member.name
+                }),
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                setCheckInStatus({ type: 'success', message: '✅ Check-in successful!' });
+            } else if (response.status === 409) {
+                setCheckInStatus({ type: 'warning', message: '⚠️ Already checked in today' });
+            } else {
+                throw new Error(data.error || 'Failed to check in');
+            }
+        } catch (error) {
+            setCheckInStatus({ type: 'error', message: `❌ ${error.message}` });
+        } finally {
+            setCheckingIn(false);
+        }
+    };
+
+    // Start add mode when isAddingNew prop changes to true
+    React.useEffect(() => {
+        if (isAddingNew) {
+            handleAddNew();
+        }
+    }, [isAddingNew]);
+
+    // Add this effect to clear status when member changes
+    React.useEffect(() => {
+        setCheckInStatus(null);
+    }, [member]);
 
     const styles = {
         container: {
@@ -112,9 +249,72 @@ const MemberDetails = ({ member, onMemberUpdate }) => {
             border: '1px solid #D1D5DB',
             fontSize: '1rem',
         },
+        inputError: {
+            borderColor: '#DC2626',
+        },
+        select: {
+            width: '100%',
+            padding: '0.5rem',
+            borderRadius: '0.375rem',
+            border: '1px solid #D1D5DB',
+            fontSize: '1rem',
+            backgroundColor: 'white',
+        },
+        errorText: {
+            color: '#DC2626',
+            fontSize: '0.75rem',
+            marginTop: '0.25rem',
+        },
+        generalError: {
+            color: '#DC2626',
+            fontSize: '0.875rem',
+            marginBottom: '1rem',
+            padding: '0.5rem',
+            backgroundColor: '#FEF2F2',
+            borderRadius: '0.375rem',
+            border: '1px solid #FECACA',
+        },
+        checkInButton: {
+            padding: '0.75rem 1rem',
+            backgroundColor: '#3B82F6',
+            color: 'white',
+            border: 'none',
+            borderRadius: '0.375rem',
+            cursor: 'pointer',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+            width: '100%',
+            marginTop: '1rem',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '0.5rem',
+        },
+        statusMessage: {
+            padding: '0.75rem',
+            borderRadius: '0.375rem',
+            marginTop: '1rem',
+            fontSize: '0.875rem',
+            fontWeight: '500',
+        },
+        successMessage: {
+            backgroundColor: '#ECFDF5',
+            color: '#065F46',
+            border: '1px solid #A7F3D0',
+        },
+        warningMessage: {
+            backgroundColor: '#FFFBEB',
+            color: '#92400E',
+            border: '1px solid #FEF3C7',
+        },
+        errorMessage: {
+            backgroundColor: '#FEF2F2',
+            color: '#B91C1C',
+            border: '1px solid #FECACA',
+        },
     };
 
-    if (!member) {
+    if (!member && !isAddingNew) {
         return (
             <div style={styles.container}>
                 <h2 style={styles.title}>Member Details</h2>
@@ -123,18 +323,23 @@ const MemberDetails = ({ member, onMemberUpdate }) => {
         );
     }
 
+    const displayMember = editedMember || member;
+    const isInEditMode = isEditing || isAddingNew;
+
     return (
         <div style={styles.container}>
             <div style={styles.buttonContainer}>
-                <h2 style={styles.title}>Member Details</h2>
-                {!isEditing ? (
+                <h2 style={styles.title}>
+                    {isAddingNew ? 'Add New Member' : 'Member Details'}
+                </h2>
+                {!isInEditMode ? (
                     <button onClick={handleEdit} style={styles.editButton}>
                         Edit
                     </button>
                 ) : (
                     <div>
                         <button onClick={handleSave} style={{...styles.editButton, ...styles.saveButton}}>
-                            Save
+                            {isAddingNew ? 'Add' : 'Save'}
                         </button>
                         <button onClick={handleCancel} style={{...styles.editButton, ...styles.cancelButton}}>
                             Cancel
@@ -142,49 +347,120 @@ const MemberDetails = ({ member, onMemberUpdate }) => {
                     </div>
                 )}
             </div>
+
+            {errors.general && (
+                <div style={styles.generalError}>
+                    {errors.general}
+                </div>
+            )}
+
             <div style={styles.memberDetails}>
-                {isEditing ? (
-                    // Edit form
+                {isInEditMode ? (
+                    // Edit/Add form
                     <>
                         <div style={styles.detailItem}>
-                            <span style={styles.detailLabel}>Name</span>
+                            <span style={styles.detailLabel}>Student ID *</span>
                             <input
-                                style={styles.input}
-                                value={editedMember.name}
-                                onChange={(e) => handleChange('name', e.target.value)}
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.student_id ? styles.inputError : {})
+                                }}
+                                value={displayMember?.student_id || ''}
+                                onChange={(e) => handleChange('student_id', e.target.value)}
+                                placeholder="Enter student ID"
+                                disabled={!isAddingNew} // Don't allow editing student ID for existing members
                             />
+                            {errors.student_id && (
+                                <span style={styles.errorText}>{errors.student_id}</span>
+                            )}
                         </div>
+                        
                         <div style={styles.detailItem}>
-                            <span style={styles.detailLabel}>Grade</span>
+                            <span style={styles.detailLabel}>Name *</span>
                             <input
-                                style={styles.input}
-                                value={editedMember.grade}
-                                onChange={(e) => handleChange('grade', e.target.value)}
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.name ? styles.inputError : {})
+                                }}
+                                value={displayMember?.name || ''}
+                                onChange={(e) => handleChange('name', e.target.value)}
+                                placeholder="Enter full name"
                             />
+                            {errors.name && (
+                                <span style={styles.errorText}>{errors.name}</span>
+                            )}
                         </div>
+                        
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Grade *</span>
+                            <input
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.grade ? styles.inputError : {})
+                                }}
+                                value={displayMember?.grade || ''}
+                                onChange={(e) => handleChange('grade', e.target.value)}
+                                placeholder="Enter grade/class"
+                            />
+                            {errors.grade && (
+                                <span style={styles.errorText}>{errors.grade}</span>
+                            )}
+                        </div>
+                        
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Status *</span>
+                            <select
+                                style={{
+                                    ...styles.select,
+                                    ...(errors.status ? styles.inputError : {})
+                                }}
+                                value={displayMember?.status || 'Active'}
+                                onChange={(e) => handleChange('status', e.target.value)}
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                                <option value="Alumni">Alumni</option>
+                            </select>
+                            {errors.status && (
+                                <span style={styles.errorText}>{errors.status}</span>
+                            )}
+                        </div>
+                        
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Parent Name</span>
                             <input
                                 style={styles.input}
-                                value={editedMember.parent_name || ''}
+                                value={displayMember?.parent_name || ''}
                                 onChange={(e) => handleChange('parent_name', e.target.value)}
+                                placeholder="Enter parent/guardian name"
                             />
                         </div>
+                        
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Contact</span>
                             <input
                                 style={styles.input}
-                                value={editedMember.contact || ''}
+                                value={displayMember?.contact || ''}
                                 onChange={(e) => handleChange('contact', e.target.value)}
+                                placeholder="Enter phone number"
                             />
                         </div>
+                        
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Email</span>
                             <input
-                                style={styles.input}
-                                value={editedMember.email || ''}
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.email ? styles.inputError : {})
+                                }}
+                                type="email"
+                                value={displayMember?.email || ''}
                                 onChange={(e) => handleChange('email', e.target.value)}
+                                placeholder="Enter email address"
                             />
+                            {errors.email && (
+                                <span style={styles.errorText}>{errors.email}</span>
+                            )}
                         </div>
                     </>
                 ) : (
@@ -221,6 +497,33 @@ const MemberDetails = ({ member, onMemberUpdate }) => {
                     </>
                 )}
             </div>
+
+            {!isInEditMode && member && (
+                <>
+                    <button 
+                        onClick={handleCheckIn}
+                        disabled={checkingIn}
+                        style={{
+                            ...styles.checkInButton,
+                            opacity: checkingIn ? 0.7 : 1,
+                            cursor: checkingIn ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {checkingIn ? 'Checking in...' : 'Check In'}
+                    </button>
+
+                    {checkInStatus && (
+                        <div style={{
+                            ...styles.statusMessage,
+                            ...(checkInStatus.type === 'success' ? styles.successMessage :
+                                checkInStatus.type === 'warning' ? styles.warningMessage :
+                                styles.errorMessage)
+                        }}>
+                            {checkInStatus.message}
+                        </div>
+                    )}
+                </>
+            )}
         </div>
     );
 };

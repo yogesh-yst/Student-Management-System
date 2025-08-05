@@ -5,3 +5,24 @@ python-dotenv==1.0.0
 dnspython==2.4.2
 Flask-Session==0.5.0
 Werkzeug==3.0.1
+
+# Core Flask dependencies (add to existing requirements.txt)
+reportlab==4.0.4
+pandas==2.1.3
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Image processing for enhanced reports (optional)
+Pillow==10.1.0
+
+# Additional utilities for better report formatting
+python-dateutil==2.8.2
+
+# For PDF table styling and advanced layouts
+reportlab-qrcode==0.1.5
+
+# For data validation and processing
+numpy==1.25.2
+
+# Memory optimization for large datasets
+psutil==5.9.6
