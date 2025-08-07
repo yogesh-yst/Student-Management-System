@@ -26,3 +26,6 @@ numpy==1.25.2
 
 # Memory optimization for large datasets
 psutil==5.9.6
+
+qrcode==7.4.2
+qrcode[pil]==7.4.2
