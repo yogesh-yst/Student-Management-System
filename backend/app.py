@@ -8,11 +8,12 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 import pandas as pd
-from reports_generator import create_pdf_report, create_excel_report, ReportGenerator
 from flask import send_file
 import tempfile
 from reports_backend import ReportsManager
 from datetime import datetime, date
+from reports_generator import create_pdf_report, create_excel_report, ReportGenerator
+
 
 
 from pymongo import MongoClient
@@ -23,6 +24,7 @@ from flask import Flask, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from flask_session import Session
+import re
 
 app = Flask(__name__)
 
@@ -102,6 +104,13 @@ def log_attendance(student_id, name):
     today_range = pd.date_range(timestamp.date(), periods=2, freq='D')
     today_start = today_range[0].to_pydatetime()
     today_end = today_range[1].to_pydatetime()
+    # If student ID is longer than 6 chars, look for pattern {a99999}
+    if len(student_id) > 6:
+        pattern = r'[a-zA-Z]\d{5}'   # Matches 'a' followed by 5 digits
+        match = re.search(pattern, student_id)
+        if match:
+            student_id = match.group()
+
     query = {
         "student_id": student_id,
         "timestamp": {"$gte": today_start, "$lt": today_end}
@@ -201,6 +210,13 @@ def check_in():
     student_id = data.get('studentId')
     if not student_id:
         return jsonify({'error': 'Student ID is required'}), 400
+
+    # If student ID is longer than 6 chars, look for pattern {a99999}
+    if len(student_id) > 6:
+        pattern = r'[a-zA-Z]\d{5}'  # Matches any letter followed by 5 digits
+        match = re.search(pattern, student_id)
+        if match:
+            student_id = match.group()
 
     student = lookup_student(student_id)
     if not student:
@@ -394,7 +410,10 @@ def generate_report(report_id):
                 return jsonify({
                     "error": f"Required parameter '{param['label']}' is missing"
                 }), 400
-        
+        # Log parameters for debugging
+        print(f"Report ID: {report_id}")
+        print(f"Parameters received: {parameters}")
+        print(f"Output format: {output_format}")
         # Generate report data based on report type
         report_data = None
         if report_id == 'attendance_summary':
@@ -403,6 +422,8 @@ def generate_report(report_id):
             report_data = report_generator.generate_student_roster(parameters)
         elif report_id == 'daily_attendance':
             report_data = report_generator.generate_daily_attendance(parameters)
+        elif report_id == 'member_id_cards':  # NEW ID CARD REPORT
+            report_data = report_generator.generate_member_id_cards(parameters)
         else:
             return jsonify({"error": "Report generation not implemented for this report type"}), 400
         
@@ -410,12 +431,18 @@ def generate_report(report_id):
         file_buffer = None
         file_extension = None
         content_type = None
-        
+        print(f"report_data received: {report_data}")
         if output_format == 'PDF':
-            file_buffer = create_pdf_report(report_data)
+            # Use specialized ID card PDF generator for ID card reports
+            if report_id == 'member_id_cards':
+                file_buffer = report_generator.create_id_card_pdf(report_data)
+            else:
+                file_buffer = report_generator.create_pdf_report(report_data)
             file_extension = 'pdf'
             content_type = 'application/pdf'
         elif output_format == 'Excel':
+            if report_id == 'member_id_cards':
+                return jsonify({"error": "Excel format not supported for ID card reports"}), 400
             file_buffer = create_excel_report(report_data)
             file_extension = 'xlsx'
             content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

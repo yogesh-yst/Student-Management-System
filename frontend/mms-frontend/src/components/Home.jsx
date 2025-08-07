@@ -51,7 +51,6 @@ const Home = ({
                 <p style={styles.subtitle}>Scan QR Code / Enter Student ID</p>
             </div>
             
-            {/* Rest of the attendance UI code from App.jsx */}
             <div style={styles.formSection}>
                 <input
                     id="studentId"

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import logo from '../assets/logo.png'; // Make sure logo is in this path
 
 const Navigation = ({ onLogout }) => {
     const location = useLocation();
@@ -21,9 +22,19 @@ const Navigation = ({ onLogout }) => {
             justifyContent: 'space-between',
             alignItems: 'center',
         },
+        logoContainer: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+        },
+        logo: {
+            height: '40px',
+            width: 'auto',
+        },
         title: {
             fontSize: '1.25rem',
             fontWeight: 'bold',
+            color: 'white',
         },
         menu: {
             display: 'flex',
@@ -54,7 +65,10 @@ const Navigation = ({ onLogout }) => {
     return (
         <nav style={styles.nav}>
             <div style={styles.container}>
-                <div style={styles.title}>CMC Bala Vihar</div>
+                <div style={styles.logoContainer}>
+                    <img src={logo} alt="CMC Logo" style={styles.logo} />
+                    <span style={styles.title}>CMC Bala Vihar</span>
+                </div>
                 <div style={styles.menu}>
                     <Link 
                         to="/" 

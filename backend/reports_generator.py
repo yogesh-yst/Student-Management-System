@@ -4,12 +4,21 @@ import uuid
 from datetime import datetime, timedelta
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 import pandas as pd
 from flask import send_file
 import tempfile
+
+import qrcode
+from PIL import Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as RLImage
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.graphics.shapes import Drawing, Rect, String
+from reportlab.graphics import renderPDF
+import tempfile
+import os
+
 
 class ReportGenerator:
     def __init__(self, db_collections):
@@ -66,6 +75,7 @@ class ReportGenerator:
             }
         }
     
+
     def generate_student_roster(self, parameters):
         """Generate student roster report"""
         status_filter = parameters.get('status', 'All')
@@ -158,6 +168,253 @@ class ReportGenerator:
                 'attendance_rate': f"{(len(attendance_records) / len(all_students) * 100):.1f}%" if all_students else "0%"
             }
         }
+    
+
+    def generate_member_id_cards(self, parameters):
+        """Generate ID cards report for members"""
+        status_filter = parameters.get('status', 'Active')
+        grade_filter = parameters.get('grade', 'All')
+        cards_per_page = int(parameters.get('cards_per_page', '10'))
+        include_qr_code = parameters.get('include_qr_code', True)
+        academic_year = parameters.get('academic_year', '2024-2025')
+        
+        # Build query
+        query = {}
+        if status_filter != 'All':
+            query['status'] = status_filter
+        if grade_filter != 'All':
+            query['grade'] = grade_filter
+            
+        # Get member data
+        members = list(self.member_collection.find(query).sort('grade', 1).sort('name', 1))
+        
+        # Process data for ID cards
+        id_card_data = []
+        for member in members:
+            card_data = {
+                'student_id': member['student_id'],
+                'name': member['name'],
+                'grade': member['grade'],
+                'status': member['status'],
+                'parent_name': member.get('parent_name', ''),
+                'contact': member.get('contact', ''),
+                'academic_year': academic_year,
+                'include_qr_code': include_qr_code
+            }
+            id_card_data.append(card_data)
+        
+        return {
+            'title': f'Member ID Cards - {academic_year}',
+            'data': id_card_data,
+            'cards_per_page': cards_per_page,
+            'include_qr_code': include_qr_code,
+            'academic_year': academic_year,
+            'summary': {
+                'total_cards': len(id_card_data),
+                'cards_per_page': cards_per_page,
+                'estimated_pages': (len(id_card_data) + cards_per_page - 1) // cards_per_page,
+                'filters': {
+                    'status': status_filter,
+                    'grade': grade_filter,
+                    'academic_year': academic_year
+                }
+            }
+        }
+
+    def create_id_card_pdf(self, report_data):
+        """Create PDF with ID cards optimized for ID card paper stock"""
+        buffer = io.BytesIO()
+        
+        # Page setup - Letter size (8.5" x 11")
+        doc = SimpleDocTemplate(buffer, pagesize=letter, 
+                            topMargin=0.5*inch, bottomMargin=0.5*inch,
+                            leftMargin=0.5*inch, rightMargin=0.5*inch)
+        
+        story = []
+        cards_per_page = report_data.get('cards_per_page', 10)
+        cards_data = report_data['data']
+        include_qr_code = report_data.get('include_qr_code', True)
+        academic_year = report_data.get('academic_year', '2024-2025')
+        
+        # Calculate card dimensions based on cards per page
+        if cards_per_page == 10:
+            # 2 columns x 5 rows = 10 cards per page
+            card_width = 3.38 * inch  # Standard CR80 card width
+            card_height = 2.13 * inch  # Standard CR80 card height
+            cols = 2
+            rows = 5
+        else:  # 8 cards per page
+            # 2 columns x 4 rows = 8 cards per page
+            card_width = 3.5 * inch
+            card_height = 2.25 * inch
+            cols = 2
+            rows = 4
+        
+        # Process cards in batches per page
+        for page_start in range(0, len(cards_data), cards_per_page):
+            page_cards = cards_data[page_start:page_start + cards_per_page]
+            
+            # Create table for this page
+            table_data = []
+            
+            for row in range(rows):
+                row_cards = []
+                for col in range(cols):
+                    card_index = row * cols + col
+                    if card_index < len(page_cards):
+                        card = self.create_single_id_card(page_cards[card_index], 
+                                                card_width, card_height,
+                                                include_qr_code, academic_year)
+                        row_cards.append(card)
+                    else:
+                        # Empty card slot
+                        row_cards.append("")
+                table_data.append(row_cards)
+            
+            # Create table with cards
+            card_table = Table(table_data, colWidths=[card_width] * cols, 
+                            rowHeights=[card_height] * rows)
+            
+            # Table styling
+            card_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
+                ('LEFTPADDING', (0, 0), (-1, -1), 2),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ]))
+            
+            story.append(card_table)
+            
+            # Add page break if not the last page
+            if page_start + cards_per_page < len(cards_data):
+                story.append(Spacer(1, 0.5*inch))
+        
+        # Build PDF
+        doc.build(story)
+        buffer.seek(0)
+        return buffer
+
+    def create_single_id_card(self, member_data, width, height, include_qr_code, academic_year):
+        """Create a single ID card as a table cell content"""
+        
+        # Create styles
+        styles = getSampleStyleSheet()
+        
+        # Custom styles for ID card
+        title_style = ParagraphStyle(
+            'IDCardTitle',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            alignment=1,  # Center
+            spaceAfter=2,
+            textColor=colors.navy
+        )
+        
+        name_style = ParagraphStyle(
+            'IDCardName',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName='Helvetica-Bold',
+            alignment=1,  # Center
+            spaceAfter=2,
+            textColor=colors.black
+        )
+        
+        info_style = ParagraphStyle(
+            'IDCardInfo',
+            parent=styles['Normal'],
+            fontSize=7,
+            fontName='Helvetica',
+            alignment=1,  # Center
+            spaceAfter=1,
+            textColor=colors.darkblue
+        )
+        
+        small_info_style = ParagraphStyle(
+            'IDCardSmallInfo',
+            parent=styles['Normal'],
+            fontSize=6,
+            fontName='Helvetica',
+            alignment=1,  # Center
+            spaceAfter=1,
+            textColor=colors.grey
+        )
+        
+        # Create card content
+        card_content = []
+        # Add logo
+        logo_path = "logo.png"  # Ensure this path exists
+        if os.path.exists(logo_path):
+            logo = RLImage(logo_path, width=2.7*inch, height=0.5*inch)
+            card_content.append(logo)
+        else:
+            # If logo file is not found, add text placeholder
+            card_content.append(Paragraph("LOGO", small_info_style))
+        # Header
+        #card_content.append(Paragraph("Chinmaya Mission - Columbus", title_style))
+        
+        # Member photo placeholder (you can enhance this to include actual photos)
+       #card_content.append(Paragraph("📷", info_style))
+        #card_content.append(Spacer(1, 2))
+        
+        # Member information
+        card_content.append(Paragraph(f"<b>{member_data['name']}</b>", name_style))
+        card_content.append(Paragraph(f"ID: {member_data['student_id']} | Grade: {member_data['grade']} | {academic_year}", info_style))
+
+        if member_data.get('parent_name'):
+            card_content.append(Paragraph(f"Parent: {member_data['parent_name'][:20]}", small_info_style))
+        
+        # QR Code section
+        if include_qr_code:
+            try:
+                # Generate QR code
+                qr_data = f"CMC|{member_data['student_id']}|{member_data['name']}|{academic_year}"
+                qr = qrcode.QRCode(version=1, box_size=2, border=1)
+                qr.add_data(qr_data)
+                qr.make(fit=True)
+                
+                # Create QR code image
+                qr_img = qr.make_image(fill_color="black", back_color="white")
+                
+                # Save QR code to temporary file
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+                    qr_img.save(temp_file.name)
+                    
+                    # Add QR code to card
+                    qr_image = RLImage(temp_file.name, width=0.7*inch, height=0.7*inch)
+                    card_content.append(Spacer(1, 2))
+                    card_content.append(qr_image)
+                    
+                    # Clean up temp file
+                    os.unlink(temp_file.name)
+                    
+            except Exception as e:
+                # If QR code generation fails, add text placeholder
+                card_content.append(Spacer(1, 2))
+                # card_content.append(Paragraph("QR", small_info_style))
+        
+        # Footer
+        #card_content.append(Spacer(1, 2))
+        #card_content.append(Paragraph("CHINMAYA MISSION", small_info_style))
+        
+        # Create a table for the single card content
+        card_table = Table([[card_content]], colWidths=[width-10], rowHeights=[height-10])
+        card_table.setStyle(TableStyle([
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+            ('BOX', (0, 0), (-1, -1), 1, colors.navy),
+            ('LEFTPADDING', (0, 0), (-1, -1), 5),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 5),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ]))
+        
+        return card_table
 
 def create_pdf_report(report_data, output_format='PDF'):
     """Create PDF report from report data"""
