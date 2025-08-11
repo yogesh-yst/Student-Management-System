@@ -22,6 +22,7 @@ import os
 
 class ReportGenerator:
     def __init__(self, db_collections):
+        # Access collections using dictionary notation
         self.attendance_collection = db_collections['attendance']
         self.member_collection = db_collections['member']
         self.generated_reports_collection = db_collections['generated_reports']
@@ -134,10 +135,11 @@ class ReportGenerator:
         attendance_records = list(self.attendance_collection.find({
             "timestamp": {"$gte": start_of_day, "$lte": end_of_day}
         }).sort('timestamp', 1))
-        
+
+        print(f"attendance_records: {attendance_records}")
+
         # Get all active students for comparison
         all_students = list(self.member_collection.find(
-            {"status": "Active"}, 
             {"student_id": 1, "name": 1, "grade": 1}
         ).sort('grade', 1).sort('name', 1))
         

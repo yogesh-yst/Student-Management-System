@@ -1,0 +1,29 @@
+version: '3.8'
+
+# This is the default docker-compose file
+# For development: Use docker-compose.dev.yml
+# For production: Use docker-compose.prod.yml
+# 
+# Usage:
+#   Development: docker-compose -f docker-compose.dev.yml up
+#   Production:  docker-compose -f docker-compose.prod.yml up
+
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      - FLASK_APP=wsgi.py
+      - FLASK_ENV=production
+      - MONGO_URI=${MONGO_URI}
+      - DB_NAME=${DB_NAME:-sms_db}
+      - SECRET_KEY=${SECRET_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 5m
+      timeout: 10s
+      retries: 3

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import Login from './components/Login';
+import Login from './components/login';
 import Navigation from './components/navigation';
 import Home from './components/Home';
 import Members from './components/Members';
 import Reports from './components/Reports';
+import Health from './components/Health';
+import config from './config';
 
-const API_BASE_URL = 'http://localhost:5000/api'; // Adjust if your backend runs on a different port
+const API_BASE_URL = config.API_URL;
 
 // Inline styles to ensure styling works regardless of external CSS
 const styles = {
@@ -152,7 +154,7 @@ const styles = {
     },
 };
 
-function App() {
+function MainApp() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [studentId, setStudentId] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
@@ -166,7 +168,7 @@ function App() {
 
     const handleLogout = async () => {
         try {
-            await fetch(`${API_BASE_URL}/logout`, {
+            await fetch(`${API_BASE_URL}/api/logout`, {
                 method: 'POST',
                 credentials: 'include'
             });
@@ -185,7 +187,7 @@ function App() {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/checkin`, {
+            const response = await fetch(`${API_BASE_URL}/api/checkin`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -222,7 +224,7 @@ function App() {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/attendance/today`, {
+            const response = await fetch(`${API_BASE_URL}/api/attendance/today`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -242,8 +244,11 @@ function App() {
     };
 
     useEffect(() => {
-        fetchTodayAttendance(); // Fetch attendance on component mount
-    }, []);
+        // Only fetch attendance if authenticated and not on health endpoint
+        if (isAuthenticated) {
+            fetchTodayAttendance(); // Fetch attendance on component mount
+        }
+    }, [isAuthenticated]);
 
     const getAlertStyle = () => {
         if (statusMessage.startsWith("✅")) {
@@ -281,7 +286,7 @@ function App() {
     }
 
     return (
-        <Router>
+        <div>
             <Navigation onLogout={handleLogout} />
             <div style={styles.container}>
                 <Routes>
@@ -310,6 +315,18 @@ function App() {
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </div>
+        </div>
+    );
+}
+
+// Main App component that handles health check routing
+function App() {
+    return (
+        <Router>
+            <Routes>
+                <Route path="/health" element={<Health />} />
+                <Route path="/*" element={<MainApp />} />
+            </Routes>
         </Router>
     );
 }
