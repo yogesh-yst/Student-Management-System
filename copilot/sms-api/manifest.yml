@@ -1,0 +1,61 @@
+# The manifest for the "sms-api" service.
+# Read the full specification for the "Request-Driven Web Service" type at:
+# https://aws.github.io/copilot-cli/docs/manifest/rd-web-service/
+
+# Your service name will be used in naming your resources like log groups, App Runner services, etc.
+name: sms-api
+# The "architecture" of the service you're running.
+type: Request-Driven Web Service
+
+image:
+  # Docker build arguments.
+  # For additional overrides: https://aws.github.io/copilot-cli/docs/manifest/rd-web-service/#image-build
+  build: backend\Dockerfile
+  # Port exposed through your container to route traffic to it.
+  port: 5000
+
+http:
+  healthcheck:
+    path: /api/health
+    healthy_threshold: 3
+    unhealthy_threshold: 5
+    interval: 10s
+    timeout: 5s
+
+# Number of CPU units for the task.
+cpu: 1024
+# Amount of memory in MiB used by the task.
+memory: 2048
+
+# Connect your App Runner service to your environment's VPC.
+# network:
+#   vpc:
+#     placement: private
+
+
+# Enable tracing for the service.
+# observability:
+#   tracing: awsxray
+
+# Optional fields for more advanced use-cases.
+
+variables:                    # Pass environment variables as key value pairs.
+  CORS_ALLOWED_ORIGINS: "http://localhost:5173,http://localhost:8080,http://localhost:5000,https://3xb6nq2gmh.us-east-2.awsapprunner.com,https://uzbkpr7qm5.us-east-2.awsapprunner.com"
+  FLASK_ENV: production
+  SECRET_KEY: "qT6XEOyjuVxTVV7r-am9f_dRhhjTNDdKcNVjrHLllSw"
+  SESSION_COOKIE_SECURE: "true"
+  MONGO_URI: "mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+  DB_NAME: "sms_db"
+
+#
+# tags:                         # Pass tags as key value pairs.
+#   project: project-name
+#
+# secrets:                      # Pass secrets from AWS Systems Manager (SSM) Parameter Store and Secrets Manager.
+#   GITHUB_TOKEN: GITHUB_TOKEN  # The key is the name of the environment variable, the value is the name of an SSM parameter.
+
+# You can override any of the values defined above by environment.
+# environments:
+#   test:
+#     variables:
+#       LOG_LEVEL: debug        # Log level for the "test" environment.

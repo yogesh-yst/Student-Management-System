@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import MemberDetails from './MemberDetails';
+import config from '../config';
 
 const Members = () => {
     const [members, setMembers] = useState([]);
@@ -143,7 +144,7 @@ const Members = () => {
     useEffect(() => {
         const fetchMembers = async () => {
             try {
-                const response = await fetch('http://localhost:5000/api/members', {
+                const response = await fetch(`${config.API_URL}/api/members`, {
                     credentials: 'include',
                 });
                 if (!response.ok) {
@@ -164,7 +165,6 @@ const Members = () => {
     const filteredMembers = members.filter(member =>
         member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         member.student_id.toLowerCase().includes(searchTerm.toLowerCase()) 
-      //  member.grade.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const handleMemberUpdate = (updatedMember) => {

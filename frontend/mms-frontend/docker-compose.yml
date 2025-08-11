@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  mms-frontend-dev:
+    build:
+      context: .
+      target: development
+    ports:
+      - "5173:5713"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:5000
+
+    command: npm run dev -- --host
+    networks:
+      - mms-network
+
+  mms-frontend-prod:
+    build:
+      context: .
+      target: production
+    ports:
+      - "3000:80"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - mms-network
+    profiles:
+      - production
+
+networks:
+  mms-network:
+    driver: bridge
+
+volumes:
+  node_modules:

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import config from '../config';
 
 const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCancelAdd }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -7,9 +8,8 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
     const [checkingIn, setCheckingIn] = useState(false);
     const [checkInStatus, setCheckInStatus] = useState(null);
 
-    // Initialize new member template
+    // Update the newMemberTemplate to remove student_id
     const newMemberTemplate = {
-        student_id: '',
         name: '',
         grade: '',
         status: 'Active',
@@ -29,12 +29,10 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         setErrors({});
     };
 
+    // Update validateForm to remove student_id validation
     const validateForm = (memberData) => {
         const newErrors = {};
         
-        if (!memberData.student_id?.trim()) {
-            newErrors.student_id = 'Student ID is required';
-        }
         if (!memberData.name?.trim()) {
             newErrors.name = 'Name is required';
         }
@@ -63,7 +61,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
             let response;
             if (isAddingNew) {
                 // Adding new member
-                response = await fetch('http://localhost:5000/api/members', {
+                response = await fetch(`${config.API_URL}/api/members`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -73,7 +71,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                 });
             } else {
                 // Updating existing member
-                response = await fetch(`http://localhost:5000/api/members/${editedMember.student_id}`, {
+                response = await fetch(`${config.API_URL}/api/members/${editedMember.student_id}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -86,7 +84,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
             if (!response.ok) {
                 const errorData = await response.json();
                 if (response.status === 409) {
-                    setErrors({ student_id: errorData.error });
+                    setErrors({ general: errorData.error });
                     return;
                 }
                 throw new Error(errorData.error || 'Failed to save member');
@@ -142,7 +140,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         setCheckInStatus(null);
 
         try {
-            const response = await fetch('http://localhost:5000/api/checkin', {
+            const response = await fetch(`${config.API_URL}/api/checkin`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -314,6 +312,11 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         },
     };
 
+    const gradeOptions = [
+        '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12',
+        'Parent', 'Teacher', 'Volunteer', 'Other'
+    ];
+
     if (!member && !isAddingNew) {
         return (
             <div style={styles.container}>
@@ -358,22 +361,20 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                 {isInEditMode ? (
                     // Edit/Add form
                     <>
-                        <div style={styles.detailItem}>
-                            <span style={styles.detailLabel}>Student ID *</span>
-                            <input
-                                style={{
-                                    ...styles.input,
-                                    ...(errors.student_id ? styles.inputError : {})
-                                }}
-                                value={displayMember?.student_id || ''}
-                                onChange={(e) => handleChange('student_id', e.target.value)}
-                                placeholder="Enter student ID"
-                                disabled={!isAddingNew} // Don't allow editing student ID for existing members
-                            />
-                            {errors.student_id && (
-                                <span style={styles.errorText}>{errors.student_id}</span>
-                            )}
-                        </div>
+                        {!isAddingNew && (
+                            <div style={styles.detailItem}>
+                                <span style={styles.detailLabel}>Member ID</span>
+                                <input
+                                    style={{
+                                        ...styles.input,
+                                        backgroundColor: '#f3f4f6',
+                                        cursor: 'not-allowed'
+                                    }}
+                                    value={displayMember?.student_id || 'Auto-generated'}
+                                    disabled={true}
+                                />
+                            </div>
+                        )}
                         
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Name *</span>
@@ -393,15 +394,21 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                         
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Grade *</span>
-                            <input
+                            <select
                                 style={{
-                                    ...styles.input,
+                                    ...styles.select,
                                     ...(errors.grade ? styles.inputError : {})
                                 }}
                                 value={displayMember?.grade || ''}
                                 onChange={(e) => handleChange('grade', e.target.value)}
-                                placeholder="Enter grade/class"
-                            />
+                            >
+                                <option value="">Select Grade/Role</option>
+                                {gradeOptions.map(grade => (
+                                    <option key={grade} value={grade}>
+                                        {grade}
+                                    </option>
+                                ))}
+                            </select>
                             {errors.grade && (
                                 <span style={styles.errorText}>{errors.grade}</span>
                             )}

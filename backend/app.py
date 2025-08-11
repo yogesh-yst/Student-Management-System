@@ -1,5 +1,6 @@
 import io
 import os
+import secrets
 import uuid
 from datetime import datetime, timedelta
 from reportlab.lib import colors
@@ -12,9 +13,9 @@ from flask import send_file
 import tempfile
 from reports_backend import ReportsManager
 from datetime import datetime, date
-from reports_generator import create_pdf_report, create_excel_report, ReportGenerator
-
-
+from reports_generator import  ReportGenerator, create_excel_report, create_pdf_report
+from dotenv import load_dotenv
+from datetime import datetime
 
 from pymongo import MongoClient
 from pymongo.errors import DuplicateKeyError
@@ -24,37 +25,117 @@ from flask import Flask, request, jsonify, session
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 from flask_session import Session
+
 import re
+from werkzeug.security import generate_password_hash
+# Removed problematic import - create_default_admin is defined in this file
 
 app = Flask(__name__)
 
 # Session Configuration
-app.config['SECRET_KEY'] = 'pnSCE8RtcPqPetdV'  # Change this to a secure random key
-app.config['SESSION_TYPE'] = 'filesystem'
+#app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'qT6XEOyjuVxTVV7r-am9f_dRhhjTNDdKcNVjrHLllSw')  # Change this to a secure random key
+#app.config['SECRET_KEY'] = 'qT6XEOyjuVxTVV7r-am9f_dRhhjTNDdKcNVjrHLllSw'
+# Change this to a secure random key
+app_secret = secrets.token_urlsafe(32)
+print(f"Generated secret key: {app_secret}")
+
+app.config.update(
+    SESSION_TYPE='null',
+    SECRET_KEY = app_secret,
+    SESSION_COOKIE_SECURE=True,  # Only send cookies over HTTPS
+    SESSION_COOKIE_HTTPONLY=True,  # Prevent JavaScript access to cookies
+    SESSION_COOKIE_SAMESITE='Lax',  # Restrict cross-site cookie sharing
+    SESSION_PERMANENT=False,
+    SESSION_USE_SIGNER=True
+)
+
+# Initialize session (but with null type, it uses Flask's built-in signed cookies)
 Session(app)
 
-# Allow CORS for requests from the frontend
-CORS(app, 
-     origins=["http://localhost:5173"],
-     supports_credentials=True,
-     methods=["GET", "POST", "OPTIONS","PATCH", "PUT", "DELETE "],  
-     expose_headers=["Content-Type", "X-CSRFToken"],
-     allow_headers=["Content-Type", "X-CSRFToken"])
+# Load environment variables
+load_dotenv()
 
-
+CORS(
+    app,
+    origins=[os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5713')],
+    supports_credentials=True,
+    methods=["GET", "POST", "OPTIONS", "PATCH", "PUT", "DELETE"],
+    allow_headers=[
+        "Content-Type", 
+        "Authorization", 
+        "X-CSRFToken",
+        "Accept",
+        "Origin",
+        "X-Requested-With"
+    ],
+    expose_headers=["Content-Type"],
+    max_age=86400,  # Cache preflight requests for 24 hours
+    vary_header=False
+)
 
 # MongoDB Configuration
-MONGO_URI = "mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"  # Replace with your MongoDB connection string
-DB_NAME = "sms_db"
+MONGO_URI = os.getenv('MONGO_URI', 'mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+DB_NAME = os.getenv('DB_NAME', 'sms_db')  # Default to 'sms_db' if not set
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
+
+# Collections 
 attendance_collection = db["attendance"]
 member_collection = db["member"]
 user_collection = db["users"]  
 generated_reports_collection = db["generated_reports"]
 reports_manager = ReportsManager(db)
-report_generator = ReportGenerator(db)
+
+# Initialize report generator
+report_generator = ReportGenerator({
+    'attendance': attendance_collection,
+    'member': member_collection,
+    'generated_reports': generated_reports_collection
+})
+
+# Health check endpoint
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint to verify the API is running."""
+    try:
+        # Test database connection
+        db.command('ismaster')
+        return jsonify({
+            "status": "healthy",
+            "message": "Student Management System API is running",
+            "database": "connected",
+            "timestamp": datetime.now().isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "unhealthy",
+            "message": "Database connection failed",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 503
+
+# Test endpoint for CORS verification
+@app.route('/api/test', methods=['GET', 'POST', 'OPTIONS'])
+def test_endpoint():
+    """Test endpoint to verify CORS and request handling."""
+    if request.method == 'GET':
+        return jsonify({
+            "message": "GET request successful",
+            "origin": request.headers.get('Origin'),
+            "method": request.method
+        })
+    elif request.method == 'POST':
+        return jsonify({
+            "message": "POST request successful", 
+            "origin": request.headers.get('Origin'),
+            "method": request.method,
+            "content_type": request.headers.get('Content-Type'),
+            "has_json": request.is_json,
+            "data": request.get_json() if request.is_json else "No JSON data"
+        })
+    
+    return jsonify({"message": "OPTIONS handled by before_request"})
 
 # Authentication decorator
 def login_required(f):
@@ -64,6 +145,34 @@ def login_required(f):
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
     return decorated_function
+
+# Global CORS and request handler
+@app.before_request
+def handle_cors():
+    # Handle preflight requests for all endpoints
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        headers = response.headers
+        origin = request.headers.get('Origin')
+        if origin:
+            allowed_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5713').split(',')
+            if origin.strip() in [o.strip() for o in allowed_origins] or '*' in allowed_origins:
+                headers['Access-Control-Allow-Origin'] = origin
+                headers['Access-Control-Allow-Credentials'] = 'true'
+        headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, DELETE, OPTIONS, PATCH'
+        headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-Requested-With, Accept, Origin'
+        headers['Access-Control-Max-Age'] = '86400'
+        return response
+
+@app.after_request
+def after_request(response):
+    origin = request.headers.get('Origin')
+    if origin:
+        allowed_origins = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5713').split(',')
+        if origin.strip() in [o.strip() for o in allowed_origins] or '*' in allowed_origins:
+            response.headers.add('Access-Control-Allow-Origin', origin)
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+    return response
 
 # Add new API endpoints for reports
 @app.route('/api/reports/attendance', methods=['GET'])
@@ -163,8 +272,7 @@ def lookup_student(student_id):
     student = member_collection.find_one({"student_id": student_id}, {"name": 1, "_id": 0})
     return student
 
-# Create an admin user if not exists
-def create_default_admin():
+def create_default_admin(user_collection):
     admin_user = user_collection.find_one({"username": "admin"})
     if not admin_user:
         user_collection.insert_one({
@@ -173,35 +281,90 @@ def create_default_admin():
             "role": "admin"
         })
 
-# Authentication decorator
-def login_required(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if 'user' not in session:
-            return jsonify({"error": "Unauthorized"}), 401
-        return f(*args, **kwargs)
-    return decorated_function
 
 # Login API
-@app.route('/api/login', methods=['POST'] )
+@app.route('/api/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-    
-    user = user_collection.find_one({"username": username})
-    
-    if user and check_password_hash(user['password'], password):
-        session['user'] = username
-        return jsonify({"message": "Login successful"})
-    
-    return jsonify({"error": "Invalid credentials"}), 401
+    try:
+        # Log request details for debugging
+        print(f"Request method: {request.method}")
+        print(f"Request Content-Type: {request.headers.get('Content-Type')}")
+        print(f"Request origin: {request.headers.get('Origin')}")
+        print(f"Request data: {request.get_data()}")
+        
+        # Check if request has the right content type
+        if not request.is_json:
+            print("Request is not JSON")
+            return jsonify({
+                "error": "Content-Type must be application/json",
+                "received_content_type": request.headers.get('Content-Type')
+            }), 415
+        
+        data = request.get_json()
+        if not data:
+            print("No JSON data found in request")
+            return jsonify({"error": "No JSON data provided"}), 400
+            
+        username = data.get('username')
+        password = data.get('password')
+        
+        print(f"Login attempt for username: {username}")
+        
+        if not username or not password:
+            print("Missing username or password in login request.")
+            return jsonify({"error": "Username and password are required"}), 400
+        
+        user = user_collection.find_one({"username": username})
+        print(f"User found: {user is not None}")
+
+        if user and check_password_hash(user['password'], password):
+            print(f"Password hash check passed for user: {username}")
+
+            # Set user session
+            session['user'] = username
+            print(f"Login successful for user: {username}")
+            print(f"Session after login: {dict(session)}")
+            
+            response = jsonify({"message": "Login successful", "user": username})
+            return response
+        else:
+            print(f"Login failed for username: {username}")
+            return jsonify({"error": "Invalid credentials"}), 401
+            
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        return jsonify({"error": "Login failed due to server error", "details": str(e)}), 500
 
 # Logout API
 @app.route('/api/logout', methods=['POST'])
 def logout():
     session.pop('user', None)
     return jsonify({"message": "Logout successful"})
+
+# Session check API
+@app.route('/api/session', methods=['GET'])
+def check_session():
+    """Check if user is logged in and return session info"""
+    try:
+        print(f"Session check - Current session: {dict(session)}")
+        print(f"Session keys: {list(session.keys())}")
+        
+        if 'user' in session:
+            print(f"Session valid for user: {session['user']}")
+            return jsonify({
+                "authenticated": True,
+                "user": session['user'],
+                "session_id": session.get('_id', 'unknown')
+            })
+        else:
+            print("No active session found.")
+            return jsonify({
+                "authenticated": False,
+                "message": "No active session"
+            }), 401
+    except Exception as e:
+        print(f"Session check error: {str(e)}")
+        return jsonify({"error": "Session check failed"}), 500
 
 @app.route('/api/checkin', methods=['POST'])
 @login_required
@@ -231,32 +394,6 @@ def check_in():
     except Exception as e:
         return jsonify({'error': 'Failed to log attendance: ' + str(e)}), 500
 
-@app.route('/api/health', methods=['GET'])
-def health_check():
-    """
-    Health check endpoint to verify API and MongoDB connection status.
-    Returns:
-        JSON response with status and MongoDB connection state
-    """
-    try:
-        # Test MongoDB connection
-        client.admin.command('ping')
-        mongodb_status = "connected"
-    except ConnectionError:
-        mongodb_status = "disconnected"
-        return jsonify({
-            'status': 'unhealthy',
-            'timestamp': datetime.now().isoformat(),
-            'mongodb': mongodb_status
-        }), 503
-
-    return jsonify({
-        'status': 'healthy',
-        'timestamp': datetime.now().isoformat(),
-        'mongodb': mongodb_status
-    }), 200
-
-
 @app.route('/api/attendance/today', methods=['GET'])
 @login_required
 def get_today_attendance_api():
@@ -274,52 +411,83 @@ def get_members():
         return jsonify(members)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+# Generate a unique member ID
+def generate_member_id(grade=None):
+    """Generate a unique member ID based on member type and sequence"""
+    def get_prefix(grade):
+        if isinstance(grade, (int, str)) and str(grade).isdigit():
+            return 'S'  # Student
+        elif str(grade).lower() == 'teacher':
+            return 'T'  # Teacher
+        elif str(grade).lower() == 'parent':
+            return 'P'  # Parent
+        else:
+            return 'O'  # Other
+
+    # Handle missing or invalid grade gracefully
+    if not grade:
+        prefix = 'O'
+    else:
+        prefix = get_prefix(grade)
     
+    # Find all existing IDs to determine next sequence
+    # Ensure all student_ids are zero-padded to 5 digits for correct sorting
+    latest_member = member_collection.find_one(
+        {"student_id": {"$regex": "^[STPO]\\d{5}$"}},  # Only consider properly formatted IDs
+        sort=[("student_id", -1)]
+    )
+
+    if latest_member:
+        # Extract the numeric part and increment
+        sequence = int(latest_member["student_id"][1:]) + 1
+    else:
+        sequence = 1
+
+    # Format: [S|T|P|O]00001 (always 5 digits)
+    return f"{prefix}{sequence:05d}"
+
+
 
 @app.route('/api/members', methods=['POST'])
 @login_required
 def add_member():
     try:
-        data = request.get_json()
-        
+
+        member_data = request.get_json()
         # Validate required fields
-        required_fields = ['student_id', 'name', 'grade', 'status']
+        required_fields = ['name', 'grade', 'status']
         for field in required_fields:
-            if not data.get(field):
+            if not member_data.get(field):
                 return jsonify({"error": f"{field} is required"}), 400
         
         # Check if student_id already exists
-        existing_member = member_collection.find_one({"student_id": data['student_id']})
+        # Check if a member with the same name or email already exists
+        existing_member = member_collection.find_one({
+            "$or": [
+            {"name": member_data.get('name')},
+            {"email": member_data.get('email')}
+            ]
+        })
         if existing_member:
-            return jsonify({"error": "Student ID already exists"}), 409
+            return jsonify({"error": "Member with name or email already exists"}), 409
         
-        # Prepare member data with default values
-        member_data = {
-            "student_id": data['student_id'],
-            "name": data['name'],
-            "grade": data['grade'],
-            "status": data.get('status', 'Active'),
-            "parent_name": data.get('parent_name', ''),
-            "contact": data.get('contact', ''),
-            "email": data.get('email', ''),
-            "created_at": datetime.now(),
-            "updated_at": datetime.now()
-        }
+        # Generate new member ID
+        member_data['student_id'] = generate_member_id(member_data.get('grade'))
         
-        # Insert the new member
-        result = member_collection.insert_one(member_data)
+        # Add timestamps
+        member_data['created_at'] = datetime.utcnow()
+        member_data['updated_at'] = datetime.utcnow()
         
-        if result.inserted_id:
-            # Fetch and return the created member (excluding MongoDB _id)
-            new_member = member_collection.find_one(
-                {"student_id": data['student_id']},
-                {"_id": 0}
-            )
-            return jsonify(new_member), 201
-        else:
-            return jsonify({"error": "Failed to create member"}), 500
-            
+        # Insert new member
+        member_collection.insert_one(member_data)
+        
+        # Return the complete member data including the generated ID
+        member_data['_id'] = str(member_data['_id'])
+        return jsonify(member_data), 201
+        
     except Exception as e:
+        print(f"Error occurred while adding member: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/members/<student_id>', methods=['PUT'])
@@ -437,7 +605,7 @@ def generate_report(report_id):
             if report_id == 'member_id_cards':
                 file_buffer = report_generator.create_id_card_pdf(report_data)
             else:
-                file_buffer = report_generator.create_pdf_report(report_data)
+                file_buffer = create_pdf_report(report_data)
             file_extension = 'pdf'
             content_type = 'application/pdf'
         elif output_format == 'Excel':
@@ -557,6 +725,12 @@ def get_generated_reports():
 
 
 if __name__ == '__main__':
-    create_default_admin()
+    # This is only for development mode
+    # For production, use: gunicorn -c gunicorn_config.py wsgi:application
+    create_default_admin(user_collection)
     reports_manager.initialize_default_reports()  
-    app.run(debug=True)
+    
+    # Development server - will show the warning you mentioned
+    print("⚠️  Running in DEVELOPMENT mode!")
+    print("🔧 For production, use: gunicorn -c gunicorn_config.py wsgi:application")
+    app.run(debug=True, host='0.0.0.0', port=5000)
