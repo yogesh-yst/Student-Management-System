@@ -1,4 +1,3 @@
-// routes/reports.js - Fixed Reports handling routes
 const express = require('express');
 const router = express.Router();
 const moment = require('moment');
@@ -7,6 +6,7 @@ const path = require('path');
 const fs = require('fs').promises;
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
+const QRCode = require('qrcode');
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
@@ -53,6 +53,64 @@ class ReportGenerator {
         this.memberCollection = db.collection('member');
         this.generatedReportsCollection = db.collection('generated_reports');
     }
+
+    async generateMemberIdCards(parameters) {
+        const statusFilter = parameters.status || 'Active';
+        const gradeFilter = parameters.grade || 'All';
+        const cardsPerPage = parseInt(parameters.cards_per_page || '10');
+        const includeQrCode = parameters.include_qr_code !== false;
+        const academicYear = parameters.academic_year || '2024-2025';
+
+        // Build query
+        const query = {};
+        if (statusFilter !== 'All') {
+            query.status = statusFilter;
+        }
+        if (gradeFilter !== 'All') {
+            query.grade = gradeFilter;
+        }
+
+        // Get member data
+        const members = await this.memberCollection
+            .find(query)
+            .sort({ grade: 1, name: 1 })
+            .toArray();
+
+        // Process data for ID cards
+        const idCardData = [];
+        for (const member of members) {
+            const cardData = {
+                student_id: member.student_id,
+                name: member.name,
+                grade: member.grade,
+                status: member.status,
+                parent_name: member.parent_name || '',
+                contact: member.contact || '',
+                academic_year: academicYear,
+                include_qr_code: includeQrCode
+            };
+            idCardData.push(cardData);
+        }
+
+        return {
+            title: `Member ID Cards - ${academicYear}`,
+            data: idCardData,
+            cards_per_page: cardsPerPage,
+            include_qr_code: includeQrCode,
+            academic_year: academicYear,
+            summary: {
+                total_cards: idCardData.length,
+                cards_per_page: cardsPerPage,
+                estimated_pages: Math.ceil(idCardData.length / cardsPerPage),
+                filters: {
+                    status: statusFilter,
+                    grade: gradeFilter,
+                    academic_year: academicYear
+                }
+            }
+        };
+    }
+
 
     async generateAttendanceSummary(parameters) {
         const startDate = moment(parameters.start_date).startOf('day').toDate();
@@ -312,6 +370,246 @@ class ReportGenerator {
             }
         };
     }
+    
+    async generateMemberIdCards(parameters) {
+        const statusFilter = parameters.status || 'Active';
+        const gradeFilter = parameters.grade || 'All';
+        const cardsPerPage = parseInt(parameters.cards_per_page || '10');
+        const includeQrCode = parameters.include_qr_code !== false;
+        const academicYear = parameters.academic_year || '2024-2025';
+
+        // Build query
+        const query = {};
+        if (statusFilter !== 'All') {
+            query.status = statusFilter;
+        }
+        if (gradeFilter !== 'All') {
+            query.grade = gradeFilter;
+        }
+
+        // Get member data
+        const members = await this.memberCollection
+            .find(query)
+            .sort({ grade: 1, name: 1 })
+            .toArray();
+
+        // Process data for ID cards
+        const idCardData = [];
+        for (const member of members) {
+            const cardData = {
+                student_id: member.student_id,
+                name: member.name,
+                grade: member.grade,
+                status: member.status,
+                parent_name: member.parent_name || '',
+                contact: member.contact || '',
+                academic_year: academicYear,
+                include_qr_code: includeQrCode
+            };
+            idCardData.push(cardData);
+        }
+
+        return {
+            title: `Member ID Cards - ${academicYear}`,
+            data: idCardData,
+            cards_per_page: cardsPerPage,
+            include_qr_code: includeQrCode,
+            academic_year: academicYear,
+            summary: {
+                total_cards: idCardData.length,
+                cards_per_page: cardsPerPage,
+                estimated_pages: Math.ceil(idCardData.length / cardsPerPage),
+                filters: {
+                    status: statusFilter,
+                    grade: gradeFilter,
+                    academic_year: academicYear
+                }
+            }
+        };
+    }
+    
+}
+
+
+async function createIdCardPDF(reportData) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const doc = new PDFDocument({ 
+                size: 'LETTER',
+                margin: 36 // 0.5 inch margins
+            });
+            const buffers = [];
+
+            doc.on('data', buffer => buffers.push(buffer));
+            doc.on('end', () => {
+                const pdfBuffer = Buffer.concat(buffers);
+                resolve(pdfBuffer);
+            });
+            doc.on('error', reject);
+
+            const cardsPerPage = reportData.cards_per_page || 10;
+            const cardsData = reportData.data;
+            const includeQrCode = reportData.include_qr_code !== false;
+            const academicYear = reportData.academic_year || '2024-2025';
+
+            // Calculate card dimensions
+            let cardWidth, cardHeight, cols, rows;
+            if (cardsPerPage === 10) {
+                // 2 columns x 5 rows = 10 cards per page
+                cardWidth = 243; // ~3.38 inches at 72 DPI
+                cardHeight = 153; // ~2.13 inches at 72 DPI
+                cols = 2;
+                rows = 5;
+            } else { // 8 cards per page
+                cardWidth = 252; // ~3.5 inches
+                cardHeight = 162; // ~2.25 inches
+                cols = 2;
+                rows = 4;
+            }
+
+            const cardSpacing = 10;
+
+            // Process cards in batches per page
+            for (let pageStart = 0; pageStart < cardsData.length; pageStart += cardsPerPage) {
+                if (pageStart > 0) {
+                    doc.addPage();
+                }
+
+                const pageCards = cardsData.slice(pageStart, pageStart + cardsPerPage);
+
+                // Draw cards for this page
+                for (let i = 0; i < pageCards.length; i++) {
+                    const cardData = pageCards[i];
+                    const row = Math.floor(i / cols);
+                    const col = i % cols;
+
+                    const x = 36 + col * (cardWidth + cardSpacing);
+                    const y = 36 + row * (cardHeight + cardSpacing);
+
+                    await drawSingleIdCard(doc, cardData, x, y, cardWidth, cardHeight, includeQrCode, academicYear);
+                }
+            }
+
+            doc.end();
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+// Function to draw a single ID card
+async function drawSingleIdCard(doc, memberData, x, y, width, height, includeQrCode, academicYear) {
+    // Save the current state
+    doc.save();
+
+    // Draw card border
+    doc.rect(x, y, width, height)
+       .strokeColor('#cccccc')
+       .lineWidth(1)
+       .stroke();
+
+    // Card background
+    doc.rect(x + 1, y + 1, width - 2, height - 2)
+       .fillColor('#ffffff')
+       .fill();
+
+    // Reset to black for text
+    doc.fillColor('#000000');
+
+    // Header - Organization name
+    doc.fontSize(12)
+       .fillColor('#1e3a8a') // Navy blue
+       .font('Helvetica-Bold')
+       .text('Chinmaya Mission Columbus', x + 10, y + 8, {
+           width: width - 20,
+           align: 'center'
+       });
+
+    // Bala Vihar subtitle
+    doc.fontSize(10)
+       .fillColor('#1e40af')
+       .font('Helvetica')
+       .text('Bala Vihar', x + 10, y + 22, {
+           width: width - 20,
+           align: 'center'
+       });
+
+    // Member name
+    doc.fontSize(11)
+       .fillColor('#000000')
+       .font('Helvetica-Bold')
+       .text(memberData.name, x + 10, y + 45, {
+           width: includeQrCode ? width - 80 : width - 20,
+           align: 'left'
+       });
+
+    // Member details
+    doc.fontSize(8)
+       .fillColor('#374151')
+       .font('Helvetica-Bold')
+       .text(`ID: ${memberData.student_id}`, x + 10, y + 62);
+
+    doc.text(`Grade: ${memberData.grade}`, x + 10, y + 75);
+    doc.text(`Year: ${academicYear}`, x + 10, y + 88);
+
+    if (memberData.parent_name) {
+        doc.fontSize(7)
+           .fillColor('#6b7280')
+           .text(`Parent: ${memberData.parent_name.substring(0, 20)}`, x + 10, y + 105);
+    }
+
+    // QR Code
+    if (includeQrCode) {
+        try {
+            const qrData = `CMC|${memberData.student_id}|${memberData.name}|${academicYear}`;
+            
+            // Generate QR code as data URL
+            const qrCodeDataURL = await QRCode.toDataURL(qrData, {
+                width: 60,
+                margin: 1,
+                color: {
+                    dark: '#000000',
+                    light: '#ffffff'
+                }
+            });
+
+            // Convert data URL to buffer
+            const base64Data = qrCodeDataURL.replace(/^data:image\/png;base64,/, '');
+            const qrBuffer = Buffer.from(base64Data, 'base64');
+
+            // Add QR code to PDF
+            doc.image(qrBuffer, x + width - 70, y + 45, {
+                width: 60,
+                height: 60
+            });
+
+        } catch (qrError) {
+            console.error('QR Code generation error:', qrError);
+            // Fallback: draw a placeholder rectangle
+            doc.rect(x + width - 70, y + 45, 60, 60)
+               .strokeColor('#cccccc')
+               .stroke();
+            
+            doc.fontSize(8)
+               .fillColor('#666666')
+               .text('QR', x + width - 45, y + 70, {
+                   width: 20,
+                   align: 'center'
+               });
+        }
+    }
+
+    // Footer
+    doc.fontSize(6)
+       .fillColor('#9ca3af')
+       .font('Helvetica')
+       .text(`Valid for ${academicYear} year only`, x + 10, y + height - 15, {
+           width: width - 20,
+           align: 'center'
+       });
+
+    // Restore the state
+    doc.restore();
 }
 
 // PDF Report Generator
@@ -665,6 +963,9 @@ router.post('/:report_id/generate', requireAuth, async (req, res) => {
             case 'enrollment_statistics':
                 reportData = await reportGenerator.generateEnrollmentStatistics(parameters);
                 break;
+             case 'member_id_cards':
+                reportData = await reportGenerator.generateMemberIdCards(parameters);
+                break;
             default:
                 return res.status(400).json({ 
                     error: "Report generation not implemented for this report type" 
@@ -677,7 +978,12 @@ router.post('/:report_id/generate', requireAuth, async (req, res) => {
         let contentType;
         
         if (output_format === 'PDF') {
-            fileBuffer = await createPDFReport(reportData);
+            // Use specialized ID card PDF generator for ID card reports
+            if (req.params.report_id === 'member_id_cards') {
+                fileBuffer = await createIdCardPDF(reportData);
+            } else {
+                fileBuffer = await createPDFReport(reportData);
+            }
             fileExtension = 'pdf';
             contentType = 'application/pdf';
         } else if (output_format === 'Excel') {
@@ -779,6 +1085,117 @@ router.get('/download/:file_id', requireAuth, async (req, res) => {
         
     } catch (error) {
         console.error('Error downloading report:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// Preview report data (without generating file)
+router.post('/:report_id/preview', requireAuth, async (req, res) => {
+    try {
+        const reportsCollection = req.db.collection('reports');
+        
+        // Get report details
+        const report = await reportsCollection.findOne({ report_id: req.params.report_id });
+        if (!report) {
+            return res.status(404).json({ error: "Report not found" });
+        }
+        
+        if (!report.is_active) {
+            return res.status(400).json({ error: "Report is not active" });
+        }
+        
+        // Get parameters from request
+        const { parameters = {} } = req.body;
+        
+        // Validate required parameters
+        for (const param of report.parameters || []) {
+            if (param.required && !parameters[param.name]) {
+                return res.status(400).json({
+                    error: `Required parameter '${param.label}' is missing`
+                });
+            }
+        }
+        
+        // Generate report data
+        const reportGenerator = new ReportGenerator(req.db);
+        let reportData;
+        
+        switch (req.params.report_id) {
+            case 'attendance_summary':
+                reportData = await reportGenerator.generateAttendanceSummary(parameters);
+                break;
+            case 'student_roster':
+                reportData = await reportGenerator.generateStudentRoster(parameters);
+                break;
+            case 'daily_attendance':
+                reportData = await reportGenerator.generateDailyAttendance(parameters);
+                break;
+            case 'enrollment_statistics':
+                reportData = await reportGenerator.generateEnrollmentStatistics(parameters);
+                break;
+            case 'member_id_cards':
+                reportData = await reportGenerator.generateMemberIdCards(parameters);
+                break;
+            default:
+                return res.status(400).json({ 
+                    error: "Report preview not implemented for this report type" 
+                });
+        }
+        
+        // Return preview data (limit to first 10 rows for performance)
+        const previewData = {
+            ...reportData,
+            data: reportData.data ? reportData.data.slice(0, 10) : [],
+            preview_note: reportData.data && reportData.data.length > 10 ? 
+                `Showing first 10 of ${reportData.data.length} records` : null
+        };
+        
+        res.json(previewData);
+        
+    } catch (error) {
+        console.error('Error generating report preview:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Clean up expired files (can be called periodically or as admin function)
+router.delete('/cleanup', requireAuth, async (req, res) => {
+    try {
+        const generatedReportsCollection = req.db.collection('generated_reports');
+        
+        // Find expired files
+        const expiredFiles = await generatedReportsCollection
+            .find({ expires_at: { $lt: new Date() } })
+            .toArray();
+        
+        let deletedFiles = 0;
+        let errors = [];
+        
+        for (const file of expiredFiles) {
+            try {
+                // Delete physical file
+                await fs.unlink(file.file_path);
+                deletedFiles++;
+            } catch (error) {
+                errors.push(`Failed to delete ${file.filename}: ${error.message}`);
+            }
+        }
+        
+        // Remove metadata from database
+        const result = await generatedReportsCollection.deleteMany({
+            expires_at: { $lt: new Date() }
+        });
+        
+        res.json({
+            message: 'Cleanup completed',
+            deleted_files: deletedFiles,
+            removed_records: result.deletedCount,
+            errors: errors
+        });
+        
+    } catch (error) {
+        console.error('Error during cleanup:', error);
         res.status(500).json({ error: error.message });
     }
 });
