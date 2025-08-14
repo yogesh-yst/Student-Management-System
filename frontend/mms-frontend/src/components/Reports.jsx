@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import ParameterForm from './ParameterForm';
 import DownloadManager from './DownloadManager';
-import config from '../config';
+//import config from '../config';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const Reports = () => {
     const [reports, setReports] = useState([]);
@@ -252,7 +254,7 @@ const Reports = () => {
     const fetchReports = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${config.API_URL}/api/reports`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports`, {
                 credentials: 'include',
             });
             if (!response.ok) {
@@ -269,7 +271,7 @@ const Reports = () => {
 
     const fetchCategories = async () => {
         try {
-            const response = await fetch(`${config.API_URL}/api/reports/categories`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/categories`, {
                 credentials: 'include',
             });
             if (response.ok) {
@@ -287,7 +289,7 @@ const Reports = () => {
 
     const handleReportClick = async (report) => {
         try {
-            const response = await fetch(`${config.API_URL}/api/reports/${report.report_id}`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/${report.report_id}`, {
                 credentials: 'include',
             });
             if (response.ok) {
@@ -302,7 +304,7 @@ const Reports = () => {
 
     const handleGenerateReport = async (reportId) => {
         try {
-            const response = await fetch(`${config.API_URL}/api/reports/${reportId}`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`, {
                 credentials: 'include',
             });
             if (response.ok) {
@@ -321,7 +323,7 @@ const Reports = () => {
             setIsGenerating(true);
             setGenerationMessage('Generating report...');
             
-            const response = await fetch(`${config.API_URL}/api/reports/${selectedReport.report_id}/generate`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/${selectedReport.report_id}/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

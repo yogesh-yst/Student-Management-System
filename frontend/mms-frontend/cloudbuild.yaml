@@ -1,0 +1,58 @@
+# frontend/mms-frontend/cloudbuild.yaml
+# Google Cloud Build configuration for React frontend
+
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'Dockerfile.gcp'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-frontend:latest'
+      - '.'
+    
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-frontend:latest'
+      
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-frontend:latest'
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'bala-vihar-frontend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-frontend:latest'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--memory'
+      - '512Mi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'NODE_ENV=production'
+
+images:
+  - 'gcr.io/$PROJECT_ID/bala-vihar-frontend:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8'

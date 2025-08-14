@@ -5,6 +5,8 @@ const moment = require('moment');
 
 // Authentication middleware
 const requireAuth = (req, res, next) => {
+    console.log('Attendance auth check - Session:', req.session);
+    console.log('Attendance auth check - User:', req.session?.user);
     if (!req.session || !req.session.user) {
         return res.status(401).json({ error: 'Unauthorized - Please login' });
     }

@@ -6,9 +6,9 @@ import Home from './components/Home';
 import Members from './components/Members';
 import Reports from './components/Reports';
 import Health from './components/Health';
-import config from './config';
+//import config from './config';
 
-const API_BASE_URL = config.API_URL;
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 // Inline styles to ensure styling works regardless of external CSS
 const styles = {

@@ -16,8 +16,8 @@ const membersRoutes = require('./routes/members');
 const reportsRoutes = require('./routes/reports');
 
 // MongoDB Configuration
-const MONGO_URI = "mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const DB_NAME = "sms_db";
+const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const DB_NAME = process.env.DB_NAME || "sms_db";
 
 let db;
 let client;
@@ -44,8 +44,10 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // CORS Configuration - More robust than Flask-CORS
+const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:5173', 'http://localhost:3000'];
+
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:3000'], // Add your frontend URLs
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

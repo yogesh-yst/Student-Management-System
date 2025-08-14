@@ -1,5 +1,8 @@
 // frontend/src/components/Login.jsx
 import React, { useState, useEffect } from 'react';
+import config from '../config';
+
+const API_BASE_URL = config.API_URL;
 
 const Login = ({ onLogin }) => {
     const [username, setUsername] = useState('');
@@ -15,7 +18,7 @@ const Login = ({ onLogin }) => {
 
     const checkAuthStatus = async () => {
         try {
-            const response = await fetch('http://localhost:5000/api/auth/status', {
+            const response = await fetch(`${API_BASE_URL}/api/auth/status`, {
                 method: 'GET',
                 credentials: 'include',
                 headers: {
@@ -52,8 +55,8 @@ const Login = ({ onLogin }) => {
 
         try {
             console.log('Attempting login with:', { username });
-            
-            const response = await fetch('http://localhost:5000/api/login', {
+            console.log('API URL:', `${API_BASE_URL}/api/login`);
+            const response = await fetch(`${API_BASE_URL}/api/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

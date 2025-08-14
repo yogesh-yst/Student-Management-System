@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import config from '../config'; 
+//import config from '../config'; 
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const DownloadManager = ({ isOpen, onClose }) => {
     const [generatedReports, setGeneratedReports] = useState([]);
@@ -16,7 +18,7 @@ const DownloadManager = ({ isOpen, onClose }) => {
     const fetchGeneratedReports = async () => {
         try {
             setLoading(true);
-            const response = await fetch(`${config.API_URL}/api/reports/generated`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/generated`, {
                 credentials: 'include',
             });
             
@@ -37,7 +39,7 @@ const DownloadManager = ({ isOpen, onClose }) => {
         try {
             setDownloadingFiles(prev => new Set([...prev, fileId]));
             
-            const response = await fetch(`${config.API_URL}/api/reports/download/${fileId}`, {
+            const response = await fetch(`${API_BASE_URL}/api/reports/download/${fileId}`, {
                 credentials: 'include',
             });
             

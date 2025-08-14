@@ -1,0 +1,44 @@
+# backend/Dockerfile.gcp
+# Optimized Dockerfile for Google Cloud Run - Node.js Backend
+
+FROM node:18-alpine AS base
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app directory
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodeuser -u 1001
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy source code
+COPY . .
+
+# Set proper ownership
+RUN chown -R nodeuser:nodejs /app
+
+# Switch to non-root user
+USER nodeuser
+
+# Expose port 8080 (Cloud Run requirement)
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node healthcheck.js
+
+# Use dumb-init for proper signal handling
+ENTRYPOINT ["dumb-init", "--"]
+
+ENV CORS_ORIGIN=https://bala-vihar-frontend-612621646571.us-east1.run.app,http://localhost:5173,http://localhost:3000, NODE_ENV=production
+
+# Start the application
+CMD ["npm", "start"]
