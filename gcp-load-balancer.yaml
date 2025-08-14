@@ -1,0 +1,86 @@
+# gcp-load-balancer.yaml
+# Google Cloud Load Balancer configuration using gcloud commands
+
+# This file contains the commands to set up load balancer
+# Run these commands in order after deploying your Cloud Run services
+
+# 1. Create NEGs (Network Endpoint Groups) for Cloud Run services
+# Replace REGION and PROJECT_ID with your values
+
+# Frontend NEG
+gcloud compute network-endpoint-groups create bala-vihar-frontend-neg \
+    --region=us-central1 \
+    --network-endpoint-type=serverless \
+    --cloud-run-service=bala-vihar-frontend
+
+# Backend NEG  
+gcloud compute network-endpoint-groups create bala-vihar-backend-neg \
+    --region=us-central1 \
+    --network-endpoint-type=serverless \
+    --cloud-run-service=bala-vihar-backend
+
+# 2. Create backend services
+gcloud compute backend-services create bala-vihar-frontend-backend \
+    --load-balancing-scheme=EXTERNAL \
+    --global
+
+gcloud compute backend-services create bala-vihar-backend-backend \
+    --load-balancing-scheme=EXTERNAL \
+    --global
+
+# 3. Add NEGs to backend services
+gcloud compute backend-services add-backend bala-vihar-frontend-backend \
+    --network-endpoint-group=bala-vihar-frontend-neg \
+    --network-endpoint-group-region=us-central1 \
+    --global
+
+gcloud compute backend-services add-backend bala-vihar-backend-backend \
+    --network-endpoint-group=bala-vihar-backend-neg \
+    --network-endpoint-group-region=us-central1 \
+    --global
+
+# 4. Create URL map with path rules
+gcloud compute url-maps create bala-vihar-lb \
+    --default-service=bala-vihar-frontend-backend
+
+# Add path matcher for API routes
+gcloud compute url-maps add-path-matcher bala-vihar-lb \
+    --path-matcher-name=api-matcher \
+    --default-service=bala-vihar-frontend-backend \
+    --path-rules="/api/*=bala-vihar-backend-backend"
+
+# 5. Create SSL certificate (replace with your domain)
+gcloud compute ssl-certificates create bala-vihar-ssl-cert \
+    --domains=your-domain.com
+
+# 6. Create target HTTPS proxy
+gcloud compute target-https-proxies create bala-vihar-https-proxy \
+    --url-map=bala-vihar-lb \
+    --ssl-certificates=bala-vihar-ssl-cert
+
+# 7. Create target HTTP proxy (for redirect)
+gcloud compute target-http-proxies create bala-vihar-http-proxy \
+    --url-map=bala-vihar-lb
+
+# 8. Reserve static IP
+gcloud compute addresses create bala-vihar-ip --global
+
+# 9. Create forwarding rules
+gcloud compute forwarding-rules create bala-vihar-https-forwarding-rule \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
+    --address=bala-vihar-ip \
+    --global \
+    --target-https-proxy=bala-vihar-https-proxy \
+    --ports=443
+
+gcloud compute forwarding-rules create bala-vihar-http-forwarding-rule \
+    --load-balancing-scheme=EXTERNAL \
+    --network-tier=PREMIUM \
+    --address=bala-vihar-ip \
+    --global \
+    --target-http-proxy=bala-vihar-http-proxy \
+    --ports=80
+
+# 10. Get the IP address for DNS configuration
+gcloud compute addresses describe bala-vihar-ip --global

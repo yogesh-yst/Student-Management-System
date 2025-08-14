@@ -1,0 +1,56 @@
+# backend/cloudbuild.yaml
+# Google Cloud Build configuration for Node.js backend
+
+steps:
+  # Build the container image
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-f'
+      - 'Dockerfile.gcp'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-backend:latest'
+      - '.'
+    
+  # Push the container image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-backend:latest'
+      
+
+  # Deploy container image to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'bala-vihar-backend'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/bala-vihar-backend:latest'
+      - '--region'
+      - 'us-east1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--port'
+      - '8080'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--min-instances'
+      - '0'
+      - '--max-instances'
+      - '10'
+    env:
+      - NODE_ENV=production
+      - MONGO_URI=mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
+      - JW_SECRET=jwt-secret
+
+images:
+    - 'gcr.io/$PROJECT_ID/bala-vihar-backend:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'N1_HIGHCPU_8'

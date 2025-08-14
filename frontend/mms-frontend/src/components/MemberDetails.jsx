@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import config from '../config';
+//import config from '../config';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCancelAdd }) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -61,7 +63,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
             let response;
             if (isAddingNew) {
                 // Adding new member
-                response = await fetch(`${config.API_URL}/api/members`, {
+                response = await fetch(`${API_BASE_URL}/api/members`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -71,7 +73,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                 });
             } else {
                 // Updating existing member
-                response = await fetch(`${config.API_URL}/api/members/${editedMember.student_id}`, {
+                response = await fetch(`${API_BASE_URL}/api/members/${editedMember.student_id}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -140,7 +142,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         setCheckInStatus(null);
 
         try {
-            const response = await fetch(`${config.API_URL}/api/checkin`, {
+            const response = await fetch(`${API_BASE_URL}/api/checkin`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

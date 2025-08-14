@@ -9,7 +9,6 @@ venv/
 *.log
 .git
 .gitignore
-Dockerfile
 docker-compose.yml
 *.md
 flask_session/

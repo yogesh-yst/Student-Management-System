@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import MemberDetails from './MemberDetails';
-import config from '../config';
+//import config from '../config';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const Members = () => {
     const [members, setMembers] = useState([]);
@@ -144,7 +146,7 @@ const Members = () => {
     useEffect(() => {
         const fetchMembers = async () => {
             try {
-                const response = await fetch(`${config.API_URL}/api/members`, {
+                const response = await fetch(`${API_BASE_URL}/api/members`, {
                     credentials: 'include',
                 });
                 if (!response.ok) {

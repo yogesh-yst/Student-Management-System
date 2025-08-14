@@ -1,0 +1,23 @@
+# .gcloudignore
+# Files to ignore when deploying to Google Cloud
+
+.git
+.gitignore
+node_modules
+npm-debug.log
+
+.env.*
+!.env.gcp
+*.log
+.DS_Store
+coverage/
+.nyc_output/
+test/
+tests/
+*.test.js
+*.spec.js
+docker-compose.*
+README.md
+*.md
+.vscode/
+.idea/

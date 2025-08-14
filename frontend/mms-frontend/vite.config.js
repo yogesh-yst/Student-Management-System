@@ -10,25 +10,27 @@ export default defineConfig(({ mode }) => {
   // Load env variables
   const env = loadEnv(mode, __dirname, '');
   
-  // Check if we're in production or AWS deployment
+  // Check if we're in production 
   const isProduction = mode === 'production';
-  const isAWSDeployment = env.VITE_API_URL && env.VITE_API_URL.includes('awsapprunner.com');
+  const isGCPDeployment = env.VITE_API_URL && !env.VITE_API_URL.includes('localhost');
 
   return {
     plugins: [react()],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),
+        '@components': path.resolve(__dirname, './src/components'),
+        '@pages': path.resolve(__dirname, './src/pages'),
       },
     },
     server: {
       host: '0.0.0.0', // Allow external connections
-      port: 5173,
+      port: 3000, // Change from 8080 to 3000
       // Only use proxy in local development, not in AWS
-      ...((!isProduction && !isAWSDeployment) && {
+      ...((!isProduction && !isGCPDeployment) && {
         proxy: {
           '/api': {
-            target: 'http://localhost:5000', // Use localhost for local dev
+            target: 'http://localhost:5000', // Your local backend
             changeOrigin: true,
             secure: false,
           },
@@ -37,7 +39,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      sourcemap: false,
+      sourcemap: true, // Change from false to true
       rollupOptions: {
         output: {
           manualChunks: {
@@ -49,7 +51,7 @@ export default defineConfig(({ mode }) => {
     },
     preview: {
       host: '0.0.0.0',
-      port: 5173,
+      port: 8080,
     },
   };
 });
