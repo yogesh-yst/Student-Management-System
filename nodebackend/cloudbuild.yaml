@@ -46,7 +46,11 @@ steps:
     env:
       - NODE_ENV=production
       - MONGO_URI=mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
-      - JW_SECRET=jwt-secret
+      - DB_NAME=sms_db
+      - SESSION_SECRET=9e2a7f4d1c8b5e3a9f7d2c6b8e4a1f9d3c7b5e2a8f6d4c1b7e9a3f5d8c2b6e4
+      - SESSION_NAME=bala-vihar-session
+      - CORS_ORIGIN=https://bala-vihar-frontend-612621646571.us-east1.run.app,http://localhost:5173,http://localhost:3000
+      - BCRYPT_ROUNDS=12
 
 images:
     - 'gcr.io/$PROJECT_ID/bala-vihar-backend:latest'
