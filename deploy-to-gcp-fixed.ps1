@@ -152,70 +152,70 @@ if ([string]::IsNullOrEmpty($jwtSecretExists)) {
     Write-ColorOutput " JWT secret already exists" $Green
 }
 
-# # Deploy Backend
-# Write-ColorOutput "  Building and deploying backend..." $Yellow
-# $originalLocation = Get-Location
-
-# try {
-#     Set-Location "nodebackend"
-    
-#     # Check if cloudbuild.yaml exists
-#     if (!(Test-Path "cloudbuild.yaml")) {
-#         Write-ColorOutput " cloudbuild.yaml not found in backend directory" $Red
-#         Write-ColorOutput "   Please ensure you've copied the GCP configuration files" $Yellow
-#         exit 1
-#     }
-    
-#     # Check if Dockerfile.gcp exists
-#     if (!(Test-Path "Dockerfile.gcp")) {
-#         Write-ColorOutput " Dockerfile.gcp not found in backend directory" $Red
-#         Write-ColorOutput "   Please ensure you've copied the GCP configuration files" $Yellow
-#         exit 1
-#     }
-    
-#     Write-ColorOutput "   Submitting build for backend..." $Blue
-#     gcloud builds submit --config cloudbuild.yaml .
-#     Test-LastCommand "Backend deployment failed"
-    
-#     Write-ColorOutput " Backend deployed successfully" $Green
-# } catch {
-#     Write-ColorOutput " Error during backend deployment: $_" $Red
-#     exit 1
-# } finally {
-#     Set-Location $originalLocation
-# }
-
-# Deploy Frontend
-Write-ColorOutput "  Building and deploying frontend..." $Yellow
+# Deploy Backend
+Write-ColorOutput "  Building and deploying backend..." $Yellow
+$originalLocation = Get-Location
 
 try {
-    Set-Location "frontend/mms-frontend"
+    Set-Location "nodebackend"
     
     # Check if cloudbuild.yaml exists
     if (!(Test-Path "cloudbuild.yaml")) {
-        Write-ColorOutput " cloudbuild.yaml not found in frontend directory" $Red
+        Write-ColorOutput " cloudbuild.yaml not found in backend directory" $Red
         Write-ColorOutput "   Please ensure you've copied the GCP configuration files" $Yellow
         exit 1
     }
     
     # Check if Dockerfile.gcp exists
     if (!(Test-Path "Dockerfile.gcp")) {
-        Write-ColorOutput " Dockerfile.gcp not found in frontend directory" $Red
+        Write-ColorOutput " Dockerfile.gcp not found in backend directory" $Red
         Write-ColorOutput "   Please ensure you've copied the GCP configuration files" $Yellow
         exit 1
     }
     
-    Write-ColorOutput "   Submitting build for frontend..." $Blue
+    Write-ColorOutput "   Submitting build for backend..." $Blue
     gcloud builds submit --config cloudbuild.yaml .
-    Test-LastCommand "Frontend deployment failed"
+    Test-LastCommand "Backend deployment failed"
     
-    Write-ColorOutput " Frontend deployed successfully" $Green
+    Write-ColorOutput " Backend deployed successfully" $Green
 } catch {
-    Write-ColorOutput " Error during frontend deployment: $_" $Red
+    Write-ColorOutput " Error during backend deployment: $_" $Red
     exit 1
 } finally {
     Set-Location $originalLocation
 }
+
+# # Deploy Frontend
+# Write-ColorOutput "  Building and deploying frontend..." $Yellow
+
+# try {
+#     Set-Location "frontend/mms-frontend"
+    
+#     # Check if cloudbuild.yaml exists
+#     if (!(Test-Path "cloudbuild.yaml")) {
+#         Write-ColorOutput " cloudbuild.yaml not found in frontend directory" $Red
+#         Write-ColorOutput "   Please ensure you've copied the GCP configuration files" $Yellow
+#         exit 1
+#     }
+    
+#     # Check if Dockerfile.gcp exists
+#     if (!(Test-Path "Dockerfile.gcp")) {
+#         Write-ColorOutput " Dockerfile.gcp not found in frontend directory" $Red
+#         Write-ColorOutput "   Please ensure you've copied the GCP configuration files" $Yellow
+#         exit 1
+#     }
+    
+#     Write-ColorOutput "   Submitting build for frontend..." $Blue
+#     gcloud builds submit --config cloudbuild.yaml .
+#     Test-LastCommand "Frontend deployment failed"
+    
+#     Write-ColorOutput " Frontend deployed successfully" $Green
+# } catch {
+#     Write-ColorOutput " Error during frontend deployment: $_" $Red
+#     exit 1
+# } finally {
+#     Set-Location $originalLocation
+# }
 
 # Get service URLs
 Write-ColorOutput " Getting service URLs..." $Yellow
@@ -232,17 +232,17 @@ Write-ColorOutput " Service Information:" $Blue
 Write-ColorOutput "   Frontend URL: $FrontendUrl" $Green
 Write-ColorOutput "   Backend URL: $BackendUrl" $Green
 
-# Update frontend environment variable to point to backend
-Write-ColorOutput " Updating frontend to use backend URL..." $Yellow
-gcloud run services update $FrontendService --region=$Region --set-env-vars="VITE_API_URL=$BackendUrl"
-Test-LastCommand "Failed to update frontend environment variables"
+# # Update frontend environment variable to point to backend
+# Write-ColorOutput " Updating frontend to use backend URL..." $Yellow
+# gcloud run services update $FrontendService --region=$Region --set-env-vars="VITE_API_URL=$BackendUrl"
+# Test-LastCommand "Failed to update frontend environment variables"
 
-# Update backend CORS to allow frontend
-Write-ColorOutput " Updating backend CORS settings..." $Yellow
-gcloud run services update $BackendService --region=$Region --set-env-vars="CORS_ORIGIN=$FrontendUrl"
-Test-LastCommand "Failed to update backend environment variables"
+# # Update backend CORS to allow frontend
+# Write-ColorOutput " Updating backend CORS settings..." $Yellow
+# gcloud run services update $BackendService --region=$Region --set-env-vars="CORS_ORIGIN=$FrontendUrl"
+# Test-LastCommand "Failed to update backend environment variables"
 
-Write-ColorOutput " All services updated and ready!" $Green
+# Write-ColorOutput " All services updated and ready!" $Green
 
 # # Display next steps
 # Write-ColorOutput "`n Next Steps:" $Yellow
@@ -258,27 +258,27 @@ Write-ColorOutput " All services updated and ready!" $Green
 # Write-ColorOutput "   Backend: gcloud logs tail `"resource.type=cloud_run_revision AND resource.labels.service_name=$BackendService`"" $Yellow
 
 # Save URLs to file for reference
-$urlInfo = @"
-Bala Vihar GCP Deployment Information
-=====================================
-Deployment Date: $(Get-Date)
-Project ID: $ProjectId
-Region: $Region
+# $urlInfo = @"
+# Bala Vihar GCP Deployment Information
+# =====================================
+# Deployment Date: $(Get-Date)
+# Project ID: $ProjectId
+# Region: $Region
 
-Service URLs:
-- Frontend: $FrontendUrl
-- Backend: $BackendUrl
-- Backend Health: $BackendUrl/api/health
+# Service URLs:
+# - Frontend: $FrontendUrl
+# - Backend: $BackendUrl
+# - Backend Health: $BackendUrl/api/health
 
-Management URLs:
-- Cloud Console: https://console.cloud.google.com/run?project=$ProjectId
-- Cloud Build: https://console.cloud.google.com/cloud-build/builds?project=$ProjectId
-- Secrets Manager: https://console.cloud.google.com/security/secret-manager?project=$ProjectId
+# Management URLs:
+# - Cloud Console: https://console.cloud.google.com/run?project=$ProjectId
+# - Cloud Build: https://console.cloud.google.com/cloud-build/builds?project=$ProjectId
+# - Secrets Manager: https://console.cloud.google.com/security/secret-manager?project=$ProjectId
 
-Log Commands:
-- Frontend Logs: gcloud logs tail "resource.type=cloud_run_revision AND resource.labels.service_name=$FrontendService"
-- Backend Logs: gcloud logs tail "resource.type=cloud_run_revision AND resource.labels.service_name=$BackendService"
-"@
+# Log Commands:
+# - Frontend Logs: gcloud logs tail "resource.type=cloud_run_revision AND resource.labels.service_name=$FrontendService"
+# - Backend Logs: gcloud logs tail "resource.type=cloud_run_revision AND resource.labels.service_name=$BackendService"
+# "@
 
 $urlInfo | Out-File -FilePath "deployment-info.txt" -Encoding UTF8
 #Write-ColorOutput "`n Deployment information saved to: deployment-info.txt" $Green

@@ -1,4 +1,9 @@
 // server.js - Node.js Express Backend
+// Load environment variables from .env file only in development
+if (process.env.NODE_ENV !== 'production') {
+    require('dotenv').config();
+}
+
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
@@ -15,6 +20,13 @@ const attendanceRoutes = require('./routes/attendance');
 const membersRoutes = require('./routes/members');
 const reportsRoutes = require('./routes/reports');
 
+
+//check if MONGO_URI is set
+if (!process.env.MONGO_URI) {
+    console.error('❌ Error: MONGO_URI environment variable is not set.');
+    process.exit(1);
+}
+
 // MongoDB Configuration
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const DB_NAME = process.env.DB_NAME || "sms_db";
@@ -25,9 +37,11 @@ let client;
 // Initialize MongoDB connection
 async function connectToMongoDB() {
     try {
-        console.log('🔄 Connecting to MongoDB...');
+        console.log('🔄 Connecting to MongoDB...', MONGO_URI);
         client = new MongoClient(MONGO_URI);
         await client.connect();
+
+        console.log('Setting DB for connection :', DB_NAME);
         db = client.db(DB_NAME);
         console.log('✅ Connected to MongoDB successfully');
         
@@ -81,14 +95,20 @@ const requireAuth = (req, res, next) => {
     }
     next();
 };
-
-
+// Custom error class for duplicate attendance
+class DuplicateAttendanceError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'DuplicateAttendanceError';
+    }
+}
 // Make db available to routes
 app.use((req, res, next) => {
     req.db = db;
     req.DuplicateAttendanceError = DuplicateAttendanceError;
     next();
 });
+
 
 // Create default admin user
 async function createDefaultAdmin() {
@@ -216,6 +236,9 @@ async function initializeDefaultReports() {
     }
 }
 
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/members', membersRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Health Check Endpoint
 app.get('/api/health', async (req, res) => {
@@ -289,6 +312,21 @@ app.post('/api/login', async (req, res) => {
             username: user.username,
             role: user.role
         };
+        req.session.save((err) => {
+            if (err) {
+                console.error('Session save error:', err);
+                return res.status(500).json({ error: 'Session creation failed' });
+            }
+            
+            console.log('Session saved successfully:', req.sessionID);
+            res.json({
+                message: 'Login successful',
+                user: {
+                    username: user.username,
+                    role: user.role
+                }
+            });
+        });
 
         // Update last login
         await usersCollection.updateOne(
@@ -349,13 +387,7 @@ app.get('/api/auth/status', (req, res) => {
     }
 });
 
-// Custom error class for duplicate attendance
-class DuplicateAttendanceError extends Error {
-    constructor(message) {
-        super(message);
-        this.name = 'DuplicateAttendanceError';
-    }
-}
+
 
 // Student lookup utility function
 async function lookupStudent(db, studentId) {
@@ -587,10 +619,6 @@ app.put('/api/members/:student_id', requireAuth, async (req, res) => {
 
 });
 
-//Use route modules
-app.use('/api', attendanceRoutes);
-app.use('/api', membersRoutes);
-app.use('/api/reports', reportsRoutes);
 
 // 404 handler for debugging
 app.use('*', (req, res) => {
@@ -640,9 +668,10 @@ process.on('SIGTERM', async () => {
 async function startServer() {
     await connectToMongoDB();
     
+
     app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
-        console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+        console.log(`📊 Health check: {http://localhost:${PORT}}/api/health`);
         console.log(`🔐 Login endpoint: http://localhost:${PORT}/api/login`);
         console.log(`👥 Members endpoint: http://localhost:${PORT}/api/members`);
         console.log(`📋 Attendance endpoint: http://localhost:${PORT}/api/attendance/today`);
