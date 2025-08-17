@@ -187,10 +187,12 @@ function MainApp() {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(`${API_BASE_URL}/api/checkin`, {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE_URL}/api/checkin`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 credentials: 'include', 
                 body: JSON.stringify({ studentId }),
@@ -224,10 +226,12 @@ function MainApp() {
         setLoading(true);
         setError(null);
         try {
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/attendance/today`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
                 credentials: 'include', // Include cookies/session
             });

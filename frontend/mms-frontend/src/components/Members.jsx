@@ -145,9 +145,13 @@ const Members = () => {
 
     useEffect(() => {
         const fetchMembers = async () => {
-            try {
+            try { 
+                const token = localStorage.getItem("token");
                 const response = await fetch(`${API_BASE_URL}/api/members`, {
                     credentials: 'include',
+                     headers: {
+                        "Authorization": `Bearer ${token}`
+                    }
                 });
                 if (!response.ok) {
                     throw new Error('Failed to fetch members');
