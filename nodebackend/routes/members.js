@@ -2,14 +2,42 @@
 const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
+const jwt = require('jsonwebtoken');
+const requireAuth = require('../requireAuth');
+
+
+// Middleware to check for JWT in cookies
+// function requireAuth(req, res, next) {
+//     const authHeader = req.headers["authorization"];
+//     let token = authHeader && authHeader.split(" ")[1]; // Expect "Bearer <token>"
+//      // Also check cookies if header token is not present
+//     if (!token) {
+//         token = req.cookies && req.cookies.token;
+//         console.log("Token from cookies:", token);
+//     }
+//     if (!token) {
+//         return res.status(401).json({ error: "Access denied. No token provided." });
+//     }
+
+//     jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+//         if (err) {
+//         console.error("JWT verification failed:", err);
+//         return res.status(403).json({ error: "Invalid or expired token." });
+//         }
+
+//         // Attach user info to request so routes can use it
+//         req.user = user;
+//         next();
+//     });
+// }
 
 // Authentication middleware
-const requireAuth = (req, res, next) => {
-    if (!req.session || !req.session.user) {
-        return res.status(401).json({ error: 'Unauthorized - Please login' });
-    }
-    next();
-};
+// const requireAuth = (req, res, next) => {
+//     if (!req.session || !req.session.user) {
+//         return res.status(401).json({ error: 'Unauthorized - Please login' });
+//     }
+//     next();
+// };
 
 // Generate a unique member ID
 async function generateMemberId(memberCollection, grade = null) {

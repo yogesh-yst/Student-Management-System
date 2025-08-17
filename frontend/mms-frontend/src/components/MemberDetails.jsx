@@ -61,12 +61,15 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
 
         try {
             let response;
+            const token = localStorage.getItem("token");
             if (isAddingNew) {
                 // Adding new member
+
                 response = await fetch(`${API_BASE_URL}/api/members`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        "Authorization": `Bearer ${token}`
                     },
                     credentials: 'include',
                     body: JSON.stringify(editedMember),
@@ -77,6 +80,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
+                        "Authorization": `Bearer ${token}`
                     },
                     credentials: 'include',
                     body: JSON.stringify(editedMember),
@@ -142,10 +146,12 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         setCheckInStatus(null);
 
         try {
+             const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/checkin`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    "Authorization": `Bearer ${token}`
                 },
                 credentials: 'include',
                 body: JSON.stringify({

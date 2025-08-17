@@ -17,9 +17,13 @@ const DownloadManager = ({ isOpen, onClose }) => {
 
     const fetchGeneratedReports = async () => {
         try {
+            const token = localStorage.getItem("token");
             setLoading(true);
             const response = await fetch(`${API_BASE_URL}/api/reports/generated`, {
                 credentials: 'include',
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
             });
             
             if (!response.ok) {
@@ -38,9 +42,12 @@ const DownloadManager = ({ isOpen, onClose }) => {
     const handleDownload = async (fileId, filename) => {
         try {
             setDownloadingFiles(prev => new Set([...prev, fileId]));
-            
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/reports/download/${fileId}`, {
                 credentials: 'include',
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
             });
             
             if (!response.ok) {

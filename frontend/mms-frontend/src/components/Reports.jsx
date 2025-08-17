@@ -254,8 +254,12 @@ const Reports = () => {
     const fetchReports = async () => {
         try {
             setLoading(true);
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/reports`, {
                 credentials: 'include',
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
             });
             if (!response.ok) {
                 throw new Error('Failed to fetch reports');
@@ -271,8 +275,12 @@ const Reports = () => {
 
     const fetchCategories = async () => {
         try {
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/reports/categories`, {
                 credentials: 'include',
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
             });
             if (response.ok) {
                 const data = await response.json();
@@ -289,8 +297,12 @@ const Reports = () => {
 
     const handleReportClick = async (report) => {
         try {
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/reports/${report.report_id}`, {
                 credentials: 'include',
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
             });
             if (response.ok) {
                 const detailedReport = await response.json();
@@ -304,8 +316,12 @@ const Reports = () => {
 
     const handleGenerateReport = async (reportId) => {
         try {
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/reports/${reportId}`, {
                 credentials: 'include',
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
             });
             if (response.ok) {
                 const detailedReport = await response.json();
@@ -322,11 +338,12 @@ const Reports = () => {
         try {
             setIsGenerating(true);
             setGenerationMessage('Generating report...');
-            
+            const token = localStorage.getItem("token");
             const response = await fetch(`${API_BASE_URL}/api/reports/${selectedReport.report_id}/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    "Authorization": `Bearer ${token}`
                 },
                 credentials: 'include',
                 body: JSON.stringify(formData),

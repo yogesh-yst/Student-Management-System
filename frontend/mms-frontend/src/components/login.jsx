@@ -67,16 +67,21 @@ const Login = ({ onLogin }) => {
                     password: password 
                 }),
             });
+            
+            const data = await response.json();
 
             console.log('Login response status:', response.status);
-            const data = await response.json();
-            console.log('Login response data:', data);
 
             if (response.ok) {
+
                 console.log('Login successful:', data);
+                
+                localStorage.setItem("token", data.token);
+
                 // Clear form
                 setUsername('');
                 setPassword('');
+
                 // Call the parent component's login handler
                 onLogin(data.user);
             } else {

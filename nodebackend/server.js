@@ -1,31 +1,29 @@
-// server.js - Node.js Express Backend
-// Load environment variables from .env file only in development
-if (process.env.NODE_ENV !== 'production') {
-    require('dotenv').config();
-}
-
+// server.js - Complete Node.js Express Backend
 const express = require('express');
 const cors = require('cors');
 const session = require('express-session');
 const bcrypt = require('bcryptjs');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const MongoStore = require('connect-mongo');
 const moment = require('moment');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+const jwt = require('jsonwebtoken');
+
+require('dotenv').config();
 
 // Import route modules
+const requireAuth = require('./requireAuth');
 const attendanceRoutes = require('./routes/attendance');
 const membersRoutes = require('./routes/members');
 const reportsRoutes = require('./routes/reports');
 
 
-//check if MONGO_URI is set
-if (!process.env.MONGO_URI) {
-    console.error('❌ Error: MONGO_URI environment variable is not set.');
-    process.exit(1);
-}
+const app = express();
+const PORT = process.env.PORT || 5000;
 
 // MongoDB Configuration
 const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://yogeshramakrishnan:pnSCE8RtcPqPetdV@cluster0.qar08.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
@@ -34,74 +32,83 @@ const DB_NAME = process.env.DB_NAME || "sms_db";
 let db;
 let client;
 
-// Initialize MongoDB connection
-async function connectToMongoDB() {
-    try {
-        console.log('🔄 Connecting to MongoDB...', MONGO_URI);
-        client = new MongoClient(MONGO_URI);
-        await client.connect();
-
-        console.log('Setting DB for connection :', DB_NAME);
-        db = client.db(DB_NAME);
-        console.log('✅ Connected to MongoDB successfully');
-        
-        // Create default admin user if doesn't exist
-        await createDefaultAdmin();
-    } catch (error) {
-        console.error('❌ MongoDB connection failed:', error);
-        process.exit(1);
-    }
-}
-
-// Middleware Configuration
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// CORS Configuration - More robust than Flask-CORS
-const allowedOrigins = process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:5173', 'http://localhost:3000'];
-
-app.use(cors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    optionsSuccessStatus: 200
-}));
-
-// Session Configuration - Much cleaner than Flask-Session
-app.use(session({
-    secret: 'pnSCE8RtcPqPetdV', // Use environment variable in production
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-        mongoUrl: MONGO_URI,
-        dbName: DB_NAME,
-        collectionName: 'sessions',
-        touchAfter: 24 * 3600 // lazy session update
-    }),
-    cookie: {
-        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-        httpOnly: true, // Prevent XSS attacks
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax'
-    },
-    name: 'bala-vihar-session' // Custom session name
-}));
-
-// Authentication Middleware
-const requireAuth = (req, res, next) => {
-    if (!req.session || !req.session.user) {
-        return res.status(401).json({ error: 'Unauthorized - Please login' });
-    }
-    next();
-};
-// Custom error class for duplicate attendance
+// Custom error classes
 class DuplicateAttendanceError extends Error {
     constructor(message) {
         super(message);
         this.name = 'DuplicateAttendanceError';
     }
 }
+
+// Initialize MongoDB connection
+async function connectToMongoDB() {
+    try {
+        client = new MongoClient(MONGO_URI);
+        await client.connect();
+        db = client.db(DB_NAME);
+        console.log('Connected to MongoDB successfully');
+        
+        // Create default admin user if doesn't exist
+        await createDefaultAdmin();
+        await initializeDefaultReports();
+    } catch (error) {
+        console.error('MongoDB connection failed:', error);
+        process.exit(1);
+    }
+}
+
+// Security middleware
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
+
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minutes
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.'
+});
+app.use('/api/', limiter);
+
+// Compression middleware
+app.use(compression());
+
+// Logging middleware
+app.use(morgan('combined'));
+
+// Body parsing middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// CORS Configuration
+app.use(cors({
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:3000').split(','),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    optionsSuccessStatus: 200
+}));
+
+// Session Configuration
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'pnSCE8RtcPqPetdV',
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+        mongoUrl: MONGO_URI,
+        dbName: DB_NAME,
+        collectionName: 'sessions',
+        touchAfter: 24 * 3600
+    }),
+    cookie: {
+        secure: 'true',
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: 'none',
+    },
+    name: process.env.SESSION_NAME || 'bala-vihar-session'
+}));
+
 // Make db available to routes
 app.use((req, res, next) => {
     req.db = db;
@@ -109,15 +116,22 @@ app.use((req, res, next) => {
     next();
 });
 
+// Authentication Middleware
+// const requireAuth = (req, res, next) => {
+//     if (!req.session || !req.session.user) {
+//         return res.status(401).json({ error: 'Unauthorized - Please login' });
+//     }
+//     next();
+// };
 
-// Create default admin user
+// Utility Functions
 async function createDefaultAdmin() {
     try {
         const usersCollection = db.collection('users');
         const adminExists = await usersCollection.findOne({ username: 'admin' });
         
         if (!adminExists) {
-            const hashedPassword = await bcrypt.hash('admin123', 12);
+            const hashedPassword = await bcrypt.hash('admin123', parseInt(process.env.BCRYPT_ROUNDS) || 12);
             await usersCollection.insertOne({
                 username: 'admin',
                 password: hashedPassword,
@@ -130,8 +144,6 @@ async function createDefaultAdmin() {
         console.error('Error creating default admin:', error);
     }
 }
-
-
 
 async function initializeDefaultReports() {
     try {
@@ -236,17 +248,10 @@ async function initializeDefaultReports() {
     }
 }
 
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/members', membersRoutes);
-app.use('/api/reports', reportsRoutes);
-
 // Health Check Endpoint
 app.get('/api/health', async (req, res) => {
-    console.log('Health check endpoint accessed');
     try {
-        // Test MongoDB connection
         await db.admin().ping();
-        console.log('Health check: MongoDB connection successful');
         res.json({
             status: 'healthy',
             timestamp: new Date().toISOString(),
@@ -254,7 +259,6 @@ app.get('/api/health', async (req, res) => {
             session: req.session ? 'active' : 'inactive'
         });
     } catch (error) {
-        console.log('Health check: MongoDB connection failed:', error.message);
         res.status(503).json({
             status: 'unhealthy',
             timestamp: new Date().toISOString(),
@@ -264,71 +268,59 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// Login Endpoint
+// Authentication Endpoints
 app.post('/api/login', async (req, res) => {
-    console.log('Login endpoint accessed');
-    console.log('Request body:', req.body);
-    console.log('Request headers:', req.headers);
-    
     try {
         const { username, password } = req.body;
-        console.log(`Login attempt for username: ${username}`);
 
-        // Validation
         if (!username || !password) {
-            console.log('Login failed: Missing username or password');
             return res.status(400).json({ 
                 error: 'Username and password are required' 
             });
         }
 
-        // Find user in database
         const usersCollection = db.collection('users');
         const user = await usersCollection.findOne({ username: username.toLowerCase() });
-        console.log(`User found in database: ${user ? 'Yes' : 'No'}`);
 
         if (!user) {
-            console.log('Login failed: User not found');
             return res.status(401).json({ 
                 error: 'Invalid username or password' 
             });
         }
 
-        // Verify password
         const isValidPassword = await bcrypt.compare(password, user.password);
-        console.log(`Password validation: ${isValidPassword ? 'Success' : 'Failed'}`);
         
         if (!isValidPassword) {
-            console.log('Login failed: Invalid password');
             return res.status(401).json({ 
                 error: 'Invalid username or password' 
             });
         }
 
-        console.log('Login successful, creating session');
-        // Create session
         req.session.user = {
             id: user._id,
             username: user.username,
             role: user.role
         };
-        req.session.save((err) => {
-            if (err) {
-                console.error('Session save error:', err);
-                return res.status(500).json({ error: 'Session creation failed' });
-            }
-            
-            console.log('Session saved successfully:', req.sessionID);
-            res.json({
-                message: 'Login successful',
-                user: {
-                    username: user.username,
-                    role: user.role
-                }
-            });
-        });
 
-        // Update last login
+        //  Create JWT token
+        const token = jwt.sign(
+        { id: user._id, username: user.username, role: user.role },
+        process.env.JWT_SECRET,   // make sure this is set in Cloud Run!
+        { expiresIn: "1d" }
+        );
+
+        // // ✅ Store it in a cookie
+        // res.cookie("token", token, {
+        // httpOnly: true,
+        // secure: true,       // Cloud Run is HTTPS
+        // sameSite: "None",   // allow cross-site requests
+        // maxAge: 24 * 60 * 60 * 1000
+        // });
+
+        //res.json({token});
+        res.json({ token, user: { username: user.username, role: user.role } });
+        //res.json({ message: "Login successful", success: true, token: token, user: { id: user._id, username: user.username, role: user.role } });
+
         await usersCollection.updateOne(
             { _id: user._id },
             { 
@@ -339,14 +331,6 @@ app.post('/api/login', async (req, res) => {
             }
         );
 
-        res.json({
-            message: 'Login successful',
-            user: {
-                username: user.username,
-                role: user.role
-            }
-        });
-
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ 
@@ -355,7 +339,6 @@ app.post('/api/login', async (req, res) => {
     }
 });
 
-// Logout Endpoint
 app.post('/api/logout', (req, res) => {
     if (req.session) {
         req.session.destroy((err) => {
@@ -386,8 +369,6 @@ app.get('/api/auth/status', (req, res) => {
         });
     }
 });
-
-
 
 // Student lookup utility function
 async function lookupStudent(db, studentId) {
@@ -467,19 +448,26 @@ async function getTodayAttendance(db) {
 app.post('/api/checkin', requireAuth, async (req, res) => {
     try {
         const { studentId } = req.body;
-        
+
         if (!studentId) {
-            return res.status(400).json({ error: 'Student ID is required' });
+            return res.status(400).json({ error: 'Invalid Student ID format' });
         }
 
-        const student = await lookupStudent(db, studentId);
+        const pipeIndex = studentId.indexOf('|');
+        const match = pipeIndex !== -1 ? studentId.substring(0, pipeIndex) : studentId;
+        console.log("Extracted Student ID:", match);
+        if (!match) {
+            return res.status(400).json({ error: 'Invalid Student ID format' });
+        }
+
+        const student = await lookupStudent(db, match);
         if (!student) {
             return res.status(404).json({ 
                 error: `Student ID ${studentId} not found.` 
             });
         }
 
-        const { timestamp } = await logAttendance(db, studentId, student.name);
+        const { timestamp } = await logAttendance(db, match, student.name);
         const formattedTimestamp = moment(timestamp).format('HH:mm:ss');
         
         res.json({
@@ -611,24 +599,17 @@ app.put('/api/members/:student_id', requireAuth, async (req, res) => {
         );
         
         res.json(updatedMember);
+        
     } catch (error) {
         console.error('Error updating member:', error);
         res.status(500).json({ error: error.message });
     }
-        
-
 });
 
-
-// 404 handler for debugging
-app.use('*', (req, res) => {
-    console.log(`404 - Route not found: ${req.method} ${req.originalUrl}`);
-    res.status(404).json({ 
-        error: 'Endpoint not found', 
-        path: req.originalUrl,
-        method: req.method
-    });
-});
+// Use route modules
+app.use('/api/attendance', attendanceRoutes);
+app.use('/api/members', membersRoutes);
+app.use('/api/reports', reportsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -668,10 +649,9 @@ process.on('SIGTERM', async () => {
 async function startServer() {
     await connectToMongoDB();
     
-
     app.listen(PORT, () => {
         console.log(`🚀 Server running on port ${PORT}`);
-        console.log(`📊 Health check: {http://localhost:${PORT}}/api/health`);
+        console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
         console.log(`🔐 Login endpoint: http://localhost:${PORT}/api/login`);
         console.log(`👥 Members endpoint: http://localhost:${PORT}/api/members`);
         console.log(`📋 Attendance endpoint: http://localhost:${PORT}/api/attendance/today`);
