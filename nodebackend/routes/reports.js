@@ -7,7 +7,7 @@ const fs = require('fs').promises;
 const PDFDocument = require('pdfkit');
 const ExcelJS = require('exceljs');
 const QRCode = require('qrcode');
-const requireAuth = require('../requireAuth');
+const requireAuth = require('../middleware/requireAuth');
 
 // // Authentication middleware
 // const requireAuth = (req, res, next) => {
@@ -113,51 +113,41 @@ class ReportGenerator {
         };
     }
 
-
     async generateAttendanceSummary(parameters) {
         const startDate = moment(parameters.start_date).startOf('day').toDate();
         const endDate = moment(parameters.end_date).endOf('day').toDate();
         const gradeFilter = parameters.grade;
 
-        // Query attendance data
-        const query = {
-            timestamp: {
-                $gte: startDate,
-                $lte: endDate
-            }
-        };
-
-        const attendanceRecords = await this.attendanceCollection.find(query).toArray();
-
-        // Get student details
-        const studentIds = attendanceRecords.map(record => record.student_id);
-        const membersQuery = { student_id: { $in: studentIds } };
+        let query = `
+            SELECT 
+                a.student_id,
+                m.name,
+                m.grade,
+                a.timestamp
+            FROM attendance a
+            JOIN members m ON a.student_id = m.student_id
+            WHERE a.timestamp >= $1 AND a.timestamp <= $2
+        `;
+        
+        const queryParams = [startDate, endDate];
         
         if (gradeFilter && gradeFilter !== 'All') {
-            membersQuery.grade = gradeFilter;
+            query += ` AND m.grade = $${queryParams.length + 1}`;
+            queryParams.push(gradeFilter);
         }
-
-        const members = await this.memberCollection.find(membersQuery).toArray();
-        const memberDict = {};
-        members.forEach(member => {
-            memberDict[member.student_id] = member;
-        });
-
-        // Process data
-        const attendanceData = [];
-        for (const record of attendanceRecords) {
-            const studentId = record.student_id;
-            if (memberDict[studentId]) {
-                const member = memberDict[studentId];
-                attendanceData.push({
-                    student_id: studentId,
-                    name: member.name,
-                    grade: member.grade,
-                    date: moment(record.timestamp).format('YYYY-MM-DD'),
-                    time: moment(record.timestamp).format('HH:mm:ss')
-                });
-            }
-        }
+        
+        query += ` ORDER BY a.timestamp`;
+        
+        const result = await this.db.query(query, queryParams);
+        
+        const attendanceData = result.rows.map(record => ({
+            student_id: record.student_id,
+            name: record.name,
+            grade: record.grade,
+            timestamp: record.timestamp,
+            date: moment(record.timestamp).format('YYYY-MM-DD'),
+            time: moment(record.timestamp).format('HH:mm:ss')
+        }));
 
         return {
             title: `Attendance Summary (${moment(startDate).format('YYYY-MM-DD')} to ${moment(endDate).format('YYYY-MM-DD')})`,
@@ -170,29 +160,39 @@ class ReportGenerator {
         };
     }
 
-    async generateStudentRoster(parameters) {
+  async generateStudentRoster(parameters) {
         const statusFilter = parameters.status || 'All';
         const gradeFilter = parameters.grade || 'All';
         const includeContact = parameters.include_contact !== false;
 
-        // Build query
-        const query = {};
+        let query = `
+            SELECT 
+                student_id, name, grade, status, parent_name, contact, email
+            FROM members
+        `;
+        
+        const whereConditions = [];
+        const queryParams = [];
+        
         if (statusFilter !== 'All') {
-            query.status = statusFilter;
+            whereConditions.push(`status = $${queryParams.length + 1}`);
+            queryParams.push(statusFilter);
         }
+        
         if (gradeFilter !== 'All') {
-            query.grade = gradeFilter;
+            whereConditions.push(`grade = $${queryParams.length + 1}`);
+            queryParams.push(gradeFilter);
         }
-
-        // Get student data
-        const members = await this.memberCollection
-            .find(query)
-            .sort({ grade: 1, name: 1 })
-            .toArray();
-
-        // Process data
-        const rosterData = [];
-        for (const member of members) {
+        
+        if (whereConditions.length > 0) {
+            query += ` WHERE ${whereConditions.join(' AND ')}`;
+        }
+        
+        query += ` ORDER BY grade, name`;
+        
+        const result = await this.db.query(query, queryParams);
+        
+        const rosterData = result.rows.map(member => {
             const studentData = {
                 student_id: member.student_id,
                 name: member.name,
@@ -206,8 +206,8 @@ class ReportGenerator {
                 studentData.email = member.email || '';
             }
 
-            rosterData.push(studentData);
-        }
+            return studentData;
+        });
 
         return {
             title: 'Student Roster Report',
@@ -223,60 +223,59 @@ class ReportGenerator {
         };
     }
 
-    async generateDailyAttendance(parameters) {
-        const targetDate = moment(parameters.date).startOf('day').toDate();
+ async generateDailyAttendance(parameters) {
+        const targetDate = moment(parameters.date).format('YYYY-MM-DD');
         const startOfDay = moment(targetDate).startOf('day').toDate();
         const endOfDay = moment(targetDate).endOf('day').toDate();
 
-        // Query attendance for the day
-        const attendanceRecords = await this.attendanceCollection
-            .find({
-                timestamp: { $gte: startOfDay, $lte: endOfDay }
-            })
-            .sort({ timestamp: 1 })
-            .toArray();
-
-        // Get all active students for comparison
-        const allStudents = await this.memberCollection
-            .find(
-                { status: "Active" },
-                { projection: { student_id: 1, name: 1, grade: 1 } }
-            )
-            .sort({ grade: 1, name: 1 })
-            .toArray();
-
-        // Create attendance data
+        // Get attendance for the day
+        const attendanceQuery = `
+            SELECT 
+                a.student_id,
+                a.timestamp
+            FROM attendance a
+            WHERE a.timestamp >= $1 AND a.timestamp <= $2
+            ORDER BY a.timestamp
+        `;
+        
+        const attendanceResult = await this.db.query(attendanceQuery, [startOfDay, endOfDay]);
+        
+        // Get all active students
+        const studentsQuery = `
+            SELECT student_id, name, grade
+            FROM members 
+            WHERE status = 'Active'
+            ORDER BY grade, name
+        `;
+        
+        const studentsResult = await this.db.query(studentsQuery);
+        
+        // Create attendance lookup
         const presentStudents = {};
-        attendanceRecords.forEach(record => {
+        attendanceResult.rows.forEach(record => {
             presentStudents[record.student_id] = record;
         });
 
-        const dailyData = [];
-        for (const student of allStudents) {
-            const studentId = student.student_id;
-            const attendanceRecord = presentStudents[studentId];
+        const dailyData = studentsResult.rows.map(student => ({
+            student_id: student.student_id,
+            name: student.name,
+            grade: student.grade,
+            status: presentStudents[student.student_id] ? 'Present' : 'Absent',
+            check_in_time: presentStudents[student.student_id] ? 
+                moment(presentStudents[student.student_id].timestamp).format('HH:mm:ss') : ''
+        }));
 
-            dailyData.push({
-                student_id: studentId,
-                name: student.name,
-                grade: student.grade,
-                status: attendanceRecord ? 'Present' : 'Absent',
-                check_in_time: attendanceRecord ? 
-                    moment(attendanceRecord.timestamp).format('HH:mm:ss') : ''
-            });
-        }
-
-        const attendanceRate = allStudents.length > 0 ? 
-            (attendanceRecords.length / allStudents.length * 100).toFixed(1) : '0';
+        const attendanceRate = studentsResult.rows.length > 0 ?
+            Math.round((attendanceResult.rows.length / studentsResult.rows.length) * 100) : 0;
 
         return {
-            title: `Daily Attendance Report - ${moment(targetDate).format('YYYY-MM-DD')}`,
+            title: `Daily Attendance Report - ${targetDate}`,
             data: dailyData,
             summary: {
-                date: moment(targetDate).format('YYYY-MM-DD'),
-                total_students: allStudents.length,
-                present: attendanceRecords.length,
-                absent: allStudents.length - attendanceRecords.length,
+                date: targetDate,
+                total_students: studentsResult.rows.length,
+                present_count: attendanceResult.rows.length,
+                absent_count: studentsResult.rows.length - attendanceResult.rows.length,
                 attendance_rate: `${attendanceRate}%`
             }
         };
@@ -854,11 +853,6 @@ async function createExcelReport(reportData) {
     return await workbook.xlsx.writeBuffer();
 }
 
-// Simple test endpoint to verify routes are working
-router.get('/test', (req, res) => {
-    console.log('Reports test endpoint accessed');
-    res.json({ message: 'Reports routes are working!', timestamp: new Date() });
-});
 
 // Get all reports
 router.get('/', requireAuth, async (req, res) => {
@@ -919,6 +913,56 @@ router.get('/:report_id', requireAuth, async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+router.post('/reports/generate', requireAuth, async (req, res) => {
+    try {
+        const { report_type, parameters = {} } = req.body;
+        
+        if (!report_type) {
+            return res.status(400).json({ error: 'Report type is required' });
+        }
+        
+        const generator = new ReportGenerator(req.db);
+        let reportData;
+        
+        switch (report_type) {
+            case 'attendance_summary':
+                if (!parameters.start_date || !parameters.end_date) {
+                    return res.status(400).json({ 
+                        error: 'start_date and end_date are required for attendance summary' 
+                    });
+                }
+                reportData = await generator.generateAttendanceSummary(parameters);
+                break;
+                
+            case 'student_roster':
+                reportData = await generator.generateStudentRoster(parameters);
+                break;
+                
+            case 'daily_attendance':
+                if (!parameters.date) {
+                    return res.status(400).json({ 
+                        error: 'date is required for daily attendance report' 
+                    });
+                }
+                reportData = await generator.generateDailyAttendance(parameters);
+                break;
+                
+            default:
+                return res.status(400).json({ error: 'Invalid report type' });
+        }
+        
+        res.json({
+            success: true,
+            report: reportData
+        });
+        
+    } catch (error) {
+        console.error('Error generating report:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+});
+
 
 // Generate report
 router.post('/:report_id/generate', requireAuth, async (req, res) => {

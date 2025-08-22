@@ -10,7 +10,10 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "migrate": "node scripts/migrate-family-schema.js",
+    "migrate:dry-run": "node scripts/migrate-family-schema.js --dry-run",
+    "setup-db": "node scripts/setup-database.js"
   },
   "keywords": [
     "school-management",
@@ -24,7 +27,7 @@
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
-    "connect-mongo": "^5.1.0",
+    "connect-pg-simple": "^9.0.1",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "exceljs": "^4.4.0",
@@ -37,11 +40,12 @@
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.29.4",
     "moment-timezone": "^0.5.43",
-    "mongodb": "^6.3.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.13.0",
+    "pg": "^8.16.3",
+    "pg-pool": "^3.6.1",
     "qrcode": "^1.5.4",
     "sharp": "^0.32.6",
     "uuid": "^11.1.0"

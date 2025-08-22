@@ -56,7 +56,7 @@ const Login = ({ onLogin }) => {
         try {
             console.log('Attempting login with:', { username });
             console.log('API URL:', `${API_BASE_URL}/api/login`);
-            const response = await fetch(`${API_BASE_URL}/api/login`, {
+            const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -165,15 +165,7 @@ const Login = ({ onLogin }) => {
                         'Login'
                     )}
                 </button>
-                
-                <div style={styles.footer}>
-                    <p style={styles.defaultCreds}>
-                        <strong>Default credentials:</strong><br/>
-                        Username: admin<br/>
-                        Password: admin123
-                    </p>
-                </div>
-            </form>
+        </form>
         </div>
     );
 };

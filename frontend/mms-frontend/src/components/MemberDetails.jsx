@@ -10,15 +10,21 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
     const [checkingIn, setCheckingIn] = useState(false);
     const [checkInStatus, setCheckInStatus] = useState(null);
 
-    // Update the newMemberTemplate to remove student_id
-    const newMemberTemplate = {
+    // Update the newMemberTemplate to remove student_id and include new fields
+    const newMemberTemplate = React.useMemo(() => ({
         name: '',
         grade: '',
         status: 'Active',
         parent_name: '',
         contact: '',
-        email: ''
-    };
+        email: '',
+        emergency_contact: '',
+        allergies: '',
+        date_of_birth: '',
+        address: '',
+        preferred_class_timing: '',
+        academic_year: ''
+    }), []);
 
     const handleEdit = () => {
         setEditedMember({ ...member });
@@ -26,12 +32,12 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         setErrors({});
     };
 
-    const handleAddNew = () => {
+    const handleAddNew = React.useCallback(() => {
         setEditedMember({ ...newMemberTemplate });
         setErrors({});
-    };
+    }, [newMemberTemplate]);
 
-    // Update validateForm to remove student_id validation
+    // Update validateForm to include validation for new fields
     const validateForm = (memberData) => {
         const newErrors = {};
         
@@ -48,6 +54,25 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         // Email validation if provided
         if (memberData.email && !/\S+@\S+\.\S+/.test(memberData.email)) {
             newErrors.email = 'Please enter a valid email address';
+        }
+
+        // Date of birth validation if provided
+        if (memberData.date_of_birth) {
+            const birthDate = new Date(memberData.date_of_birth);
+            const today = new Date();
+            if (birthDate > today) {
+                newErrors.date_of_birth = 'Date of birth cannot be in the future';
+            }
+        }
+
+        // Contact number validation
+        if (memberData.contact && !/^\+?[\d\s\-()]+$/.test(memberData.contact)) {
+            newErrors.contact = 'Please enter a valid contact number';
+        }
+
+        // Emergency contact validation
+        if (memberData.emergency_contact && !/^\+?[\d\s\-()]+$/.test(memberData.emergency_contact)) {
+            newErrors.emergency_contact = 'Please enter a valid emergency contact number';
         }
         
         setErrors(newErrors);
@@ -181,7 +206,7 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
         if (isAddingNew) {
             handleAddNew();
         }
-    }, [isAddingNew]);
+    }, [isAddingNew, handleAddNew]);
 
     // Add this effect to clear status when member changes
     React.useEffect(() => {
@@ -201,6 +226,8 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
             top: '80px',
             alignSelf: 'flex-start',
             height: 'fit-content',
+            maxHeight: 'calc(100vh - 100px)',
+            overflowY: 'auto',
         },
         title: {
             fontSize: '1.5rem',
@@ -454,11 +481,17 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Contact</span>
                             <input
-                                style={styles.input}
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.contact ? styles.inputError : {})
+                                }}
                                 value={displayMember?.contact || ''}
                                 onChange={(e) => handleChange('contact', e.target.value)}
                                 placeholder="Enter phone number"
                             />
+                            {errors.contact && (
+                                <span style={styles.errorText}>{errors.contact}</span>
+                            )}
                         </div>
                         
                         <div style={styles.detailItem}>
@@ -476,6 +509,98 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                             {errors.email && (
                                 <span style={styles.errorText}>{errors.email}</span>
                             )}
+                        </div>
+
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Emergency Contact</span>
+                            <input
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.emergency_contact ? styles.inputError : {})
+                                }}
+                                value={displayMember?.emergency_contact || ''}
+                                onChange={(e) => handleChange('emergency_contact', e.target.value)}
+                                placeholder="Enter emergency contact number"
+                            />
+                            {errors.emergency_contact && (
+                                <span style={styles.errorText}>{errors.emergency_contact}</span>
+                            )}
+                        </div>
+
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Date of Birth</span>
+                            <input
+                                style={{
+                                    ...styles.input,
+                                    ...(errors.date_of_birth ? styles.inputError : {})
+                                }}
+                                type="date"
+                                value={displayMember?.date_of_birth || ''}
+                                onChange={(e) => handleChange('date_of_birth', e.target.value)}
+                            />
+                            {errors.date_of_birth && (
+                                <span style={styles.errorText}>{errors.date_of_birth}</span>
+                            )}
+                        </div>
+
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Address</span>
+                            <textarea
+                                style={{
+                                    ...styles.input,
+                                    minHeight: '80px',
+                                    resize: 'vertical'
+                                }}
+                                value={displayMember?.address || ''}
+                                onChange={(e) => handleChange('address', e.target.value)}
+                                placeholder="Enter full address"
+                            />
+                        </div>
+
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Allergies</span>
+                            <textarea
+                                style={{
+                                    ...styles.input,
+                                    minHeight: '60px',
+                                    resize: 'vertical'
+                                }}
+                                value={displayMember?.allergies || ''}
+                                onChange={(e) => handleChange('allergies', e.target.value)}
+                                placeholder="List any known allergies or medical conditions"
+                            />
+                        </div>
+
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Preferred Class Timing</span>
+                            <select
+                                style={styles.input}
+                                value={displayMember?.preferred_class_timing || ''}
+                                onChange={(e) => handleChange('preferred_class_timing', e.target.value)}
+                            >
+                                <option value="">Select timing preference</option>
+                                <option value="Morning">Morning (8:00 AM - 12:00 PM)</option>
+                                <option value="Afternoon">Afternoon (12:00 PM - 6:00 PM)</option>
+                                <option value="Evening">Evening (6:00 PM - 10:00 PM)</option>
+                                <option value="Weekend">Weekend Classes</option>
+                                <option value="Flexible">Flexible</option>
+                            </select>
+                        </div>
+
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Academic Year</span>
+                            <select
+                                style={styles.input}
+                                value={displayMember?.academic_year || new Date().getFullYear().toString()}
+                                onChange={(e) => handleChange('academic_year', e.target.value)}
+                            >
+                                <option value="">Select academic year</option>
+                                <option value="2023">2023</option>
+                                <option value="2024">2024</option>
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                                <option value="2027">2027</option>
+                            </select>
                         </div>
                     </>
                 ) : (
@@ -508,6 +633,34 @@ const MemberDetails = ({ member, onMemberUpdate, onMemberAdd, isAddingNew, onCan
                         <div style={styles.detailItem}>
                             <span style={styles.detailLabel}>Email</span>
                             <span style={styles.detailValue}>{member.email || 'N/A'}</span>
+                        </div>
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Emergency Contact</span>
+                            <span style={styles.detailValue}>{member.emergency_contact || 'N/A'}</span>
+                        </div>
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Date of Birth</span>
+                            <span style={styles.detailValue}>
+                                {member.date_of_birth 
+                                    ? new Date(member.date_of_birth).toLocaleDateString() 
+                                    : 'N/A'}
+                            </span>
+                        </div>
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Address</span>
+                            <span style={styles.detailValue}>{member.address || 'N/A'}</span>
+                        </div>
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Allergies</span>
+                            <span style={styles.detailValue}>{member.allergies || 'None listed'}</span>
+                        </div>
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Preferred Class Timing</span>
+                            <span style={styles.detailValue}>{member.preferred_class_timing || 'N/A'}</span>
+                        </div>
+                        <div style={styles.detailItem}>
+                            <span style={styles.detailLabel}>Academic Year</span>
+                            <span style={styles.detailValue}>{member.academic_year || 'N/A'}</span>
                         </div>
                     </>
                 )}

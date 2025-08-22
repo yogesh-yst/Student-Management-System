@@ -86,7 +86,7 @@ const Navigation = ({ onLogout }) => {
                             ...(location.pathname === '/members' ? styles.activeMenuItem : {})
                         }}
                     >
-                        Members
+                        Members & Families
                     </Link>
                     <Link 
                         to="/reports" 

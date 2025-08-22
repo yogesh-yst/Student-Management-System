@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import MemberDetails from './MemberDetails';
+import FamilyManagement from './familyManagement';
 //import config from '../config';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -11,6 +12,7 @@ const Members = () => {
     const [error, setError] = useState(null);
     const [selectedMember, setSelectedMember] = useState(null);
     const [isAddingNew, setIsAddingNew] = useState(false);
+    const [activeTab, setActiveTab] = useState('members'); // 'members' or 'families'
 
     const styles = {
         container: {
@@ -141,6 +143,43 @@ const Members = () => {
             padding: '2rem',
             color: '#6B7280',
         },
+        tabContainer: {
+            display: 'flex',
+            borderBottom: '1px solid #E5E7EB',
+            marginBottom: '1.5rem',
+            backgroundColor: 'white',
+            borderRadius: '0.5rem',
+            overflow: 'hidden',
+            boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+            border: '1px solid #E5E7EB',
+        },
+        tab: {
+            padding: '1rem 1.5rem',
+            cursor: 'pointer',
+            backgroundColor: '#F9FAFB',
+            color: '#6B7280',
+            fontWeight: '500',
+            borderRight: '1px solid #E5E7EB',
+            transition: 'all 0.2s ease',
+            flex: 1,
+            textAlign: 'center',
+            fontSize: '0.875rem',
+            border: 'none',
+        },
+        activeTab: {
+            backgroundColor: '#3B82F6',
+            color: 'white',
+            fontWeight: '600',
+            borderBottom: 'none',
+        },
+        tabContent: {
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            backgroundColor: 'white',
+            borderRadius: '0 0 0.5rem 0.5rem',
+            minHeight: 0,
+        },
     };
 
     useEffect(() => {
@@ -153,11 +192,28 @@ const Members = () => {
                         "Authorization": `Bearer ${token}`
                     }
                 });
+                if (response.status === 304) {
+                    setMembers([]);
+                    return;
+                }
                 if (!response.ok) {
                     throw new Error('Failed to fetch members');
                 }
                 const data = await response.json();
-                setMembers(data);
+                console.log('API Response:', data); // Debug log to see the structure
+                
+                // Handle different possible response structures
+                if (Array.isArray(data)) {
+                    // If response is directly an array
+                    setMembers(data);
+                } else if (data && Array.isArray(data.members)) {
+                    // If response is an object with members array
+                    setMembers(data.members);
+                } else {
+                    // Fallback - set empty array and log warning
+                    console.warn('Unexpected API response structure:', data);
+                    setMembers([]);
+                }
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -168,22 +224,28 @@ const Members = () => {
         fetchMembers();
     }, []);
 
-    const filteredMembers = members.filter(member =>
-        member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        member.student_id.toLowerCase().includes(searchTerm.toLowerCase()) 
-    );
+    const filteredMembers = Array.isArray(members) ? members.filter(member =>
+        (member.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (member.student_id || '').toLowerCase().includes(searchTerm.toLowerCase()) 
+    ) : [];
 
     const handleMemberUpdate = (updatedMember) => {
         setMembers(prevMembers => 
-            prevMembers.map(member => 
-                member.student_id === updatedMember.student_id ? updatedMember : member
-            )
+            Array.isArray(prevMembers) 
+                ? prevMembers.map(member => 
+                    member.student_id === updatedMember.student_id ? updatedMember : member
+                  )
+                : [updatedMember]
         );
         setSelectedMember(updatedMember);
     };
 
     const handleMemberAdd = (newMember) => {
-        setMembers(prevMembers => [...prevMembers, newMember]);
+        setMembers(prevMembers => 
+            Array.isArray(prevMembers) 
+                ? [...prevMembers, newMember]
+                : [newMember]
+        );
         setSelectedMember(newMember);
     };
 
@@ -209,27 +271,53 @@ const Members = () => {
 
     return (
         <div style={{ ...styles.container, flexDirection: 'column', gap: 0 }}>
-            {/* Top Panel */}
+            {/* Header with Title */}
             <div style={{
                 width: '100%',
                 backgroundColor: '#F3F4F6',
                 padding: '1.5rem 2rem',
                 borderRadius: '0.5rem',
-                marginBottom: '2rem',
+                marginBottom: '1rem',
                 boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
             }}>
                 <div style={styles.header}>
-                    <h1 style={styles.title}>Members Directory</h1>
-                    <button onClick={handleAddNewMember} style={styles.addButton}>
-                        <span>+</span>
-                        Add New Member
-                    </button>
+                    <h1 style={styles.title}>Members & Families</h1>
+                    {activeTab === 'members' && (
+                        <button onClick={handleAddNewMember} style={styles.addButton}>
+                            <span>+</span>
+                            Add New Member
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div style={styles.tabContainer}>
+                <div 
+                    style={{
+                        ...styles.tab,
+                        ...(activeTab === 'members' ? styles.activeTab : {})
+                    }}
+                    onClick={() => setActiveTab('members')}
+                >
+                    Individual Members
+                </div>
+                <div 
+                    style={{
+                        ...styles.tab,
+                        ...(activeTab === 'families' ? styles.activeTab : {})
+                    }}
+                    onClick={() => setActiveTab('families')}
+                >
+                    Family Management
                 </div>
             </div>
             
-            {/* Main Content Panels */}
-            <div style={{ display: 'flex', gap: '2rem', flex: 1, minHeight: 0 }}>
-                <div style={styles.mainPanel}>
+            {/* Tab Content */}
+            <div style={styles.tabContent}>
+                {activeTab === 'members' ? (
+                    <div style={{ display: 'flex', gap: '2rem', flex: 1, minHeight: 0 }}>
+                        <div style={styles.mainPanel}>
                     <div style={styles.searchContainer}>
                         <input
                             type="text"
@@ -321,6 +409,11 @@ const Members = () => {
                     isAddingNew={isAddingNew}
                     onCancelAdd={handleCancelAdd}
                 />
+            </div>
+                ) : (
+                    /* Family Management View */
+                    <FamilyManagement />
+                )}
             </div>
         </div>
     );
